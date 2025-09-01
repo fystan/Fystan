@@ -1,7 +1,6 @@
 use fystan::codegen::Compiler;
 use clap::Parser;
 use std::fs;
-use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -60,12 +59,7 @@ mod tests {
         let program = p.parse_program();
         assert!(p.errors().is_empty(), "Parser errors found: {:?}", p.errors());
 
-        // Create a dummy main function to compile into
-        let main_fn_type = compiler.context.i64_type().fn_type(&[], false);
-        let main_fn = compiler.module.add_function("main", main_fn_type, None);
-        let entry_block = compiler.context.append_basic_block(main_fn, "entry");
-        compiler.builder.position_at_end(entry_block);
-        compiler.current_function = Some(main_fn);
+        compiler.setup_test_main_function();
 
         let result = compiler.compile(program);
         assert!(result.is_ok(), "Compilation failed: {:?}", result.err());

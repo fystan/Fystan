@@ -4,21 +4,20 @@ use std::path::Path;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::passes::PassManager;
+use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{InitializationConfig, Target, TargetMachine};
-use inkwell::types::{BasicType, BasicTypeEnum, FloatType, IntType, PointerType};
-use inkwell::values::{BasicValue, BasicValueEnum, FloatValue, FunctionValue, PointerValue};
-use inkwell::{AddressSpace, OptimizationLevel};
+use inkwell::types::{BasicType, BasicTypeEnum, BasicMetadataTypeEnum};
+use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::OptimizationLevel;
 
-use crate::ast::{ExpressionEnum, InfixOperator, Node, Program, Statement, PrefixOperator};
+use crate::ast::{ExpressionEnum, InfixOperator, Program, Statement, PrefixOperator};
 use crate::parser::Parser;
 
 pub struct Compiler<'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
-    fpm: PassManager<FunctionValue<'ctx>>,
-    variables: HashMap<String, PointerValue<'ctx>>,
+    variables: HashMap<String, (PointerValue<'ctx>, BasicTypeEnum<'ctx>)>,
     current_function: Option<FunctionValue<'ctx>>,
 }
 
@@ -27,22 +26,10 @@ impl<'ctx> Compiler<'ctx> {
         let builder = context.create_builder();
         let module = context.create_module("fystan_module");
 
-        let fpm = PassManager::create(&module);
-        fpm.add_instruction_combining_pass();
-        fpm.add_reassociate_pass();
-        fpm.add_gvn_pass();
-        fpm.add_cfg_simplification_pass();
-        fpm.add_basic_alias_analysis_pass();
-        fpm.add_promote_memory_to_register_pass();
-        fpm.add_instruction_combining_pass();
-        fpm.add_reassociate_pass();
-        fpm.initialize();
-
         Self {
             context,
             builder,
             module,
-            fpm,
             variables: HashMap::new(),
             current_function: None,
         }
@@ -68,16 +55,17 @@ impl<'ctx> Compiler<'ctx> {
             Statement::Let(let_stmt) => {
                 let name = let_stmt.name.value;
                 let initial_value = self.compile_expression(&let_stmt.value)?;
+                let ty = initial_value.get_type();
 
-                let alloca = self.create_entry_block_alloca(initial_value.get_type(), &name);
-                self.builder.build_store(alloca, initial_value);
+                let alloca = self.create_entry_block_alloca(ty, &name);
+                self.builder.build_store(alloca, initial_value).unwrap();
 
-                self.variables.insert(name, alloca);
+                self.variables.insert(name, (alloca, ty));
                 Ok(())
             }
             Statement::Return(ret_stmt) => {
                 let value = self.compile_expression(&ret_stmt.return_value)?;
-                self.builder.build_return(Some(&value));
+                self.builder.build_return(Some(&value)).unwrap();
                 Ok(())
             }
         }
@@ -95,11 +83,11 @@ impl<'ctx> Compiler<'ctx> {
                 Ok(self.context.bool_type().const_int(if lit.value { 1 } else { 0 }, false).into())
             }
             ExpressionEnum::StringLiteral(lit) => {
-                Ok(self.builder.build_global_string_ptr(&lit.value, ".str").as_basic_value_enum())
+                Ok(self.builder.build_global_string_ptr(&lit.value, ".str").unwrap().as_basic_value_enum())
             }
             ExpressionEnum::Identifier(ident) => {
                 match self.variables.get(&ident.value) {
-                    Some(var) => Ok(self.builder.build_load(*var, &ident.value).unwrap()),
+                    Some((var, ty)) => Ok(self.builder.build_load(*ty, *var, &ident.value).unwrap()),
                     None => Err(format!("Undefined variable: {}", ident.value)),
                 }
             }
@@ -156,9 +144,10 @@ impl<'ctx> Compiler<'ctx> {
 
                 for (i, arg) in function.get_param_iter().enumerate() {
                     let arg_name = &func_lit.parameters[i].value;
-                    let alloca = self.create_entry_block_alloca(arg.get_type(), arg_name);
-                    self.builder.build_store(alloca, arg);
-                    self.variables.insert(arg_name.clone(), alloca);
+                    let ty = arg.get_type();
+                    let alloca = self.create_entry_block_alloca(ty, arg_name);
+                    self.builder.build_store(alloca, arg).unwrap();
+                    self.variables.insert(arg_name.clone(), (alloca, ty));
                 }
 
                 self.compile_block_statement(&func_lit.body)?;
@@ -166,15 +155,13 @@ impl<'ctx> Compiler<'ctx> {
                 // Add implicit return if block doesn't have one
                 if entry.get_terminator().is_none() {
                      if function.get_type().get_return_type().is_some() {
-                        self.builder.build_return(Some(&function.get_type().get_return_type().unwrap().const_zero()));
+                        self.builder.build_return(Some(&function.get_type().get_return_type().unwrap().const_zero())).unwrap();
                      } else {
-                        self.builder.build_return(None);
+                        self.builder.build_return(None).unwrap();
                      }
                 }
 
-                if function.verify(true) {
-                    self.fpm.run_on(&function);
-                } else {
+                if !function.verify(true) {
                     // For debugging: Print the invalid function's IR
                     // function.print_to_stderr();
                     return Err(format!("Invalid function generated: {}", func_lit.name.value));
@@ -203,9 +190,9 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn compile_prototype(&mut self, func: &crate::ast::FunctionLiteral) -> Result<FunctionValue<'ctx>, String> {
-        let param_types: Vec<BasicTypeEnum<'ctx>> = func.parameters
+        let param_types: Vec<BasicMetadataTypeEnum<'ctx>> = func.parameters
             .iter()
-            .map(|_| self.context.i64_type().into()) // Assume i64 for now
+            .map(|_| self.context.i64_type().as_basic_type_enum().into()) // Assume i64 for now
             .collect();
 
         // Assume i64 return type for now
@@ -245,15 +232,15 @@ impl<'ctx> Compiler<'ctx> {
         let else_bb = self.context.append_basic_block(function, "else");
         let merge_bb = self.context.append_basic_block(function, "ifcont");
 
-        self.builder.build_conditional_branch(i1_cond, then_bb, else_bb);
+        self.builder.build_conditional_branch(i1_cond, then_bb, else_bb).unwrap();
 
         // Build then block
         self.builder.position_at_end(then_bb);
         self.compile_block_statement(&if_expr.consequence)?;
         if then_bb.get_terminator().is_none() {
-            self.builder.build_unconditional_branch(merge_bb);
+            self.builder.build_unconditional_branch(merge_bb).unwrap();
         }
-        let then_val = self.builder.get_insert_block().unwrap(); // Value is last instruction
+        let _then_val = self.builder.get_insert_block().unwrap(); // Value is last instruction
 
         // Build else block
         self.builder.position_at_end(else_bb);
@@ -261,9 +248,9 @@ impl<'ctx> Compiler<'ctx> {
             self.compile_block_statement(alt)?;
         }
         if else_bb.get_terminator().is_none() {
-            self.builder.build_unconditional_branch(merge_bb);
+            self.builder.build_unconditional_branch(merge_bb).unwrap();
         }
-        let else_val = self.builder.get_insert_block().unwrap();
+        let _else_val = self.builder.get_insert_block().unwrap();
 
         // Build merge block
         self.builder.position_at_end(merge_bb);
@@ -326,23 +313,15 @@ impl<'ctx> Compiler<'ctx> {
         builder.build_alloca(ty, name).unwrap()
     }
 
-    pub fn write_to_object_file(&self, target_triple: &str, output_path: &Path) -> Result<(), String> {
-        Target::initialize_all(&InitializationConfig::default());
-        let target = Target::from_triple(target_triple).map_err(|e| e.to_string())?;
-        let target_machine = target
-            .create_target_machine(
-                target_triple,
-                "generic",
-                "",
-                OptimizationLevel::Aggressive,
-                inkwell::targets::RelocMode::Default,
-                inkwell::targets::CodeModel::Default,
-            )
-            .ok_or_else(|| "Unable to create target machine".to_string())?;
+    pub fn setup_test_main_function(&mut self) {
+        let main_fn_type = self.context.i64_type().fn_type(&[], false);
+        let main_fn = self.module.add_function("main", main_fn_type, None);
+        let entry_block = self.context.append_basic_block(main_fn, "entry");
+        self.builder.position_at_end(entry_block);
+        self.current_function = Some(main_fn);
+    }
 
-        self.module.set_data_layout(&target_machine.get_target_data().get_data_layout());
-        self.module.set_triple(target_triple);
-
+    pub fn write_to_object_file(&self, target_machine: &TargetMachine, output_path: &Path) -> Result<(), String> {
         target_machine
             .write_to_file(&self.module, inkwell::targets::FileType::Object, output_path)
             .map_err(|e| e.to_string())
@@ -372,17 +351,38 @@ impl<'ctx> Compiler<'ctx> {
         if compiler.builder.get_insert_block().unwrap().get_terminator().is_none() {
             // If the last expression was the return value, it's already handled.
             // Otherwise, return 0.
-            compiler.builder.build_return(Some(&compiler.context.i64_type().const_int(0, false)));
+            compiler.builder.build_return(Some(&compiler.context.i64_type().const_int(0, false))).unwrap();
         }
 
         // compiler.module.print_to_stderr(); // For debugging LLVM IR
 
+        Target::initialize_all(&InitializationConfig::default());
+        let triple = inkwell::targets::TargetTriple::create(target_triple);
+        let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
+        let target_machine = target
+            .create_target_machine(
+                &triple,
+                "generic",
+                "",
+                OptimizationLevel::Aggressive,
+                inkwell::targets::RelocMode::Default,
+                inkwell::targets::CodeModel::Default,
+            )
+            .ok_or_else(|| "Unable to create target machine".to_string())?;
+
+        compiler.module.set_data_layout(&target_machine.get_target_data().get_data_layout());
+        compiler.module.set_triple(&triple);
+
+        // Optimize the module
+        let pass_options = PassBuilderOptions::create();
+        compiler.module.run_passes("default<O2>", &target_machine, pass_options).map_err(|e| e.to_string())?;
+
         let obj_path = Path::new(&output_filename).with_extension("obj");
-        compiler.write_to_object_file(target_triple, &obj_path)?;
+        compiler.write_to_object_file(&target_machine, &obj_path)?;
 
         // Link the object file
         let output = std::process::Command::new("clang")
-            .arg(obj_path)
+            .arg(&obj_path)
             .arg("-o")
             .arg(output_filename)
             .output()

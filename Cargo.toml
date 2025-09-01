@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 lazy_static = "1.5.0"
 clap = { version = "*", features = ["derive"] }
-inkwell = { version = "*", features = ["llvm18-1"] }
+inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+llvm-sys = { version = "181.2.0", features = ["prefer-dynamic"] }
 target-lexicon = "*"
 
 [profile.release]
