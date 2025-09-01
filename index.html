@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fystan</title>
+    <link rel="icon" href="fystan.ico" type="image/x-icon">
+    <style>
+        body {
+            margin: 0;
+            padding: 36px 28px;
+            background: #0d1117;
+            color: #b8c0c9;
+            font-size: 1.1rem;
+            line-height: 1.7;
+        }
+        h1, h2, h3 {
+            color: #d8dee4;
+        }
+        a {
+            color: #8ab4f8;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        pre {
+            background: #1a1f26; 
+            color: #c0c8d2; 
+            padding: 12px 16px; 
+            border-radius: 6px; 
+            font-size: 1em; 
+            overflow-x: auto;
+        }
+        code {
+            background: #1a1f26;
+            color: #c0c8d2;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        .download-button {
+            display: inline-block;
+            background-color: #8ab4f8;
+            color: #0d1117;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .download-button:hover {
+            background-color: #a3c5f9;
+            text-decoration: none;
+        }
+        hr {
+            border: 0;
+            height: 1px;
+            background: #30363d;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1><img src="fystan.ico" width="40" height="40" style="vertical-align: middle;"> Fystan</h1>
+    <p><b>Fystan</b> is a compiled programming language that blends the intuitive syntax of <b>Python</b>, <b>Go</b>, and <b>JavaScript</b> with the raw performance of <b>Rust</b> and <b>C++</b>.<br>
+    It features <b>safe, efficient memory management</b> via <b>CTMM</b> (Compile Time Memory Management) and generates <b>native binaries</b> for multiple architectures.</p>
+    <blockquote>⚡ Currently in <b>active development</b> – new features are added regularly.</blockquote>
+
+    <hr>
+
+    <h2>✨ Features</h2>
+    <ul>
+        <li>🔨 <b>Compiled Language</b> – Generates native assembly for <code>x86_64</code>, <code>aarch64</code>, and <code>armv7</code>, enabling <b>cross-compilation</b> to <b>Windows, macOS, Linux, Android, and WebAssembly (Wasm)</b>.</li>
+        <li>📝 <b>Simple, Modern Syntax</b> – Clean and beginner-friendly</li>
+        <li>🛡 <b>Safe Memory Management</b> – Powered by <b>CTMM</b></li>
+        <li>📦 <b>Optimized Binaries</b> – Small, release-optimized output</li>
+    </ul>
+
+    <hr>
+
+    <h2>📦 Installation</h2>
+    <a href="installers/fystan_installer.exe" class="download-button" download>
+        Download Fystan Installer
+    </a>
+
+    <hr>
+
+    <h2>🖥 Usage</h2>
+    <p>To compile a Fystan file:</p>
+    <pre><code>fystan build --target OS:architecture example.fys</code></pre>
+
+    <p><b>Example:</b></p>
+    <pre><code>fystan build --target windows:amd64 main.fys</code></pre>
+
+    <p>The output will be an <b>object file (.obj)</b> for your selected target architecture.<br>
+    All compiler output and errors are in <b>English</b>.</p>
+    
+    <h3>Supported Targets</h3>
+    <p>The <code>fystan build</code> command supports cross-compilation to the following <code>OS:architecture</code> combinations:</p>
+    <ul>
+        <li><code>windows:amd64</code></li>
+        <li><code>linux:amd64</code></li>
+        <li><code>darwin:amd64</code></li>
+        <li><code>android:arm64</code></li>
+        <li><code>windows:x86</code></li>
+        <li><code>linux:x86</code></li>
+        <li><code>linux:arm</code></li>
+        <li><code>linux:arm64</code></li>
+        <li><code>darwin:arm64</code></li>
+        <li><code>wasm:wasm32</code></li>
+    </ul>
+
+    <hr>
+
+    <h2>🔍 CTMM – Compile Time Memory Management</h2>
+    <p><b>CTMM</b> is a memory management system that shifts all garbage collection decisions to <b>compile-time</b>, eliminating the need for runtime garbage collection.<br>
+    It enables developers to write code with automatic memory management comparable to Python or JavaScript without manual intervention.</p>
+
+    <h3>Key Features</h3>
+    <ul>
+        <li>🛡 <b>Compile-Time Determinism</b><br>All object lifetimes are analyzed and deallocation points are inserted at compile time.<br>Prevents dangling pointers <b>before the code runs</b>.</li>
+        <li>⚡ <b>Zero Runtime GC</b><br>The compiled binary contains only pure native code with direct deallocation calls, ensuring zero garbage collection pauses in 99% of cases.</li>
+        <li>👨‍💻 <b>Developer-Friendly</b><br>Combines the ease of Python/JavaScript with the performance and predictability of C++.</li>
+    </ul>
+
+    <hr>
+
+    <h2>⚙ How CTMM Works</h2>
+    <p>The core of CTMM is <b>Compile-time Garbage Collection Elimination</b>:</p>
+    <ol>
+        <li><b>At compile-time</b>, the compiler performs static liveness and escape analysis to determine when each object is no longer needed.</li>
+        <li><b>Deallocation instructions</b> (<code>free()</code> or arena resets) are inserted directly into the generated native code.</li>
+        <li><b>Most short-lived objects</b> are placed on the stack or in arenas, avoiding heap allocation altogether.</li>
+        <li><b>At runtime</b>, your program executes purely native code — no GC loop, no background threads.</li>
+    </ol>
+
+    <p>✅ <b>No runtime garbage collector</b><br>
+    ✅ <b>No manual `free()` calls</b><br>
+    ✅ <b>Near-zero runtime overhead</b></p>
+
+    <p>In rare cases where an object’s lifetime cannot be fully resolved at compile-time (such as dynamic cyclic references), CTMM triggers a <b>mini-GC</b>:<br>
+    It runs briefly to clean up unreachable cycles, then exits immediately, causing minimal pause times (microseconds to milliseconds).</p>
+    
+    <a href="https://github.com/GNDFR/Fystan" target="_blank" style="display: block; text-align: center;">
+        <img src="https://img.shields.io/badge/GitHub-Fystan-0d1117?logo=github&style=for-the-badge&logoColor=white" alt="GitHub Fystan Repository" style="margin-top:12px;">
+    </a>
+</body>
+</html>

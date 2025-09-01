@@ -1,0 +1,5 @@
+/downloads/*
+  Content-Disposition: attachment
+
+/installers/*
+  Content-Disposition: attachment
