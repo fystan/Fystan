@@ -108,4 +108,9 @@ mod tests {
         ";
         assert_compiles_ok(code);
     }
+
+    #[test]
+    fn test_string_literal_statement() {
+        assert_compiles_ok("let a = \"hello world\";");
+    }
 }

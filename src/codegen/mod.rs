@@ -94,6 +94,9 @@ impl<'ctx> Compiler<'ctx> {
             ExpressionEnum::Boolean(lit) => {
                 Ok(self.context.bool_type().const_int(if lit.value { 1 } else { 0 }, false).into())
             }
+            ExpressionEnum::StringLiteral(lit) => {
+                Ok(self.builder.build_global_string_ptr(&lit.value, ".str").as_basic_value_enum())
+            }
             ExpressionEnum::Identifier(ident) => {
                 match self.variables.get(&ident.value) {
                     Some(var) => Ok(self.builder.build_load(*var, &ident.value).unwrap()),
