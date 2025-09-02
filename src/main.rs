@@ -48,21 +48,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use fystan::codegen::Compiler;
-    use inkwell::context::Context;
     use fystan::parser::Parser;
+    use llvm_sys as llvm;
 
     fn assert_compiles_ok(fystan_code: &str) {
-        let context = Context::create();
-        let mut compiler = Compiler::new(&context);
-        let l = fystan::lexer::Lexer::new(fystan_code);
-        let mut p = Parser::new(l);
-        let program = p.parse_program();
-        assert!(p.errors().is_empty(), "Parser errors found: {:?}", p.errors());
+        unsafe {
+            let context = llvm::core::LLVMContextCreate();
+            let mut compiler = Compiler::new(context);
+            let l = fystan::lexer::Lexer::new(fystan_code);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            assert!(p.errors().is_empty(), "Parser errors found: {:?}", p.errors());
 
-        compiler.setup_test_main_function();
+            compiler.setup_test_main_function();
 
-        let result = compiler.compile(program);
-        assert!(result.is_ok(), "Compilation failed: {:?}", result.err());
+            let result = compiler.compile(program);
+            assert!(result.is_ok(), "Compilation failed: {:?}", result.err());
+            
+            llvm::core::LLVMContextDispose(context);
+        }
     }
 
     #[test]
