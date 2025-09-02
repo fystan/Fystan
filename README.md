@@ -18,7 +18,7 @@ It features **safe, efficient memory management** via **CTMM** (Compile Time Mem
 
 ## 📦 Installation
 
-Download it on [Fystan Website](https://fystan.pages.dev).
+Download it on [Fystan Website](https://fystan.dedyn.io).
 ---
 
 ## 🖥 Usage
