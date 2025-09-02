@@ -74,7 +74,6 @@ impl<'a> Parser<'a> {
     fn next_token(&mut self) {
         self.cur_token = self.peek_token.clone();
         self.peek_token = self.l.next_token();
-        println!("cur_token: {:?}, peek_token: {:?}", self.cur_token, self.peek_token);
     }
 
     pub fn parse_program(&mut self) -> Program {
@@ -630,5 +629,327 @@ impl<'a> Parser<'a> {
             t, self.peek_token.token_type
         );
         self.errors.push(msg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{ExpressionEnum, Statement};
+    use crate::lexer::Lexer;
+
+    #[test]
+    fn test_let_statements() {
+        let input = "
+            let x = 5;
+            let y = 10;
+            let foobar = 838383;
+        ";
+
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 3);
+
+        let tests = ["x", "y", "foobar"];
+        for (i, tt) in tests.iter().enumerate() {
+            let stmt = &program.statements[i];
+            assert!(test_let_statement(stmt, tt));
+        }
+    }
+
+    fn test_let_statement(s: &Statement, name: &str) -> bool {
+        if let Statement::Let(let_stmt) = s {
+            if let_stmt.name.value == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn check_parser_errors(p: &Parser) {
+        if p.errors.is_empty() {
+            return;
+        }
+
+        eprintln!("Parser has {} errors", p.errors.len());
+        for msg in &p.errors {
+            eprintln!("Parser error: {}", msg);
+        }
+        panic!("Parser errors occurred");
+    }
+
+    #[test]
+    fn test_return_statements() {
+        let input = "
+            return 5;
+            return 10;
+            return 993322;
+        ";
+
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 3);
+
+        for stmt in program.statements {
+            assert!(matches!(stmt, Statement::Return(_)));
+        }
+    }
+
+    #[test]
+    fn test_identifier_expression() {
+        let input = "foobar;";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Expression(expr_stmt) = stmt {
+            if let ExpressionEnum::Identifier(ident) = &expr_stmt.expression {
+                assert_eq!(ident.value, "foobar");
+            } else {
+                panic!("Expression is not an Identifier");
+            }
+        } else {
+            panic!("Statement is not an ExpressionStatement");
+        }
+    }
+
+    #[test]
+    fn test_integer_literal_expression() {
+        let input = "5;";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Expression(expr_stmt) = stmt {
+            if let ExpressionEnum::IntegerLiteral(lit) = &expr_stmt.expression {
+                assert_eq!(lit.value, 5);
+            } else {
+                panic!("Expression is not an IntegerLiteral");
+            }
+        } else {
+            panic!("Statement is not an ExpressionStatement");
+        }
+    }
+
+    #[test]
+    fn test_parsing_prefix_expressions() {
+        let prefix_tests = vec![
+            ("!5;", PrefixOperator::Bang, 5),
+            ("-15;", PrefixOperator::Minus, 15),
+        ];
+
+        for (input, operator, value) in prefix_tests {
+            let l = Lexer::new(input);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            check_parser_errors(&p);
+
+            assert_eq!(program.statements.len(), 1);
+            let stmt = &program.statements[0];
+            if let Statement::Expression(expr_stmt) = stmt {
+                if let ExpressionEnum::Prefix(prefix_expr) = &expr_stmt.expression {
+                    assert_eq!(prefix_expr.operator, operator);
+                    // You'd need a more robust way to test the right expression
+                } else {
+                    panic!("Expression is not a PrefixExpression");
+                }
+            } else {
+                panic!("Statement is not an ExpressionStatement");
+            }
+        }
+    }
+
+    #[test]
+    fn test_parsing_infix_expressions() {
+        let infix_tests = vec![
+            ("5 + 5;", 5, InfixOperator::Plus, 5),
+            ("5 - 5;", 5, InfixOperator::Minus, 5),
+            ("5 * 5;", 5, InfixOperator::Multiply, 5),
+            ("5 / 5;", 5, InfixOperator::Divide, 5),
+            ("5 > 5;", 5, InfixOperator::Gt, 5),
+            ("5 < 5;", 5, InfixOperator::Lt, 5),
+            ("5 == 5;", 5, InfixOperator::Eq, 5),
+            ("5 != 5;", 5, InfixOperator::NotEq, 5),
+        ];
+
+        for (input, left_val, op, right_val) in infix_tests {
+            let l = Lexer::new(input);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            check_parser_errors(&p);
+
+            assert_eq!(program.statements.len(), 1);
+            let stmt = &program.statements[0];
+            if let Statement::Expression(expr_stmt) = stmt {
+                if let ExpressionEnum::Infix(infix_expr) = &expr_stmt.expression {
+                    assert_eq!(infix_expr.operator, op);
+                    // Again, need better testing for expressions
+                } else {
+                    panic!("Expression is not an InfixExpression");
+                }
+            } else {
+                panic!("Statement is not an ExpressionStatement");
+            }
+        }
+    }
+
+    #[test]
+    fn test_operator_precedence_parsing() {
+        let tests = vec![
+            ("-a * b", "((-a) * b)"),
+            ("! -a", "(!(-a))"),
+            ("a + b + c", "((a + b) + c)"),
+            ("a + b - c", "((a + b) - c)"),
+            ("a * b * c", "((a * b) * c)"),
+            ("a * b / c", "((a * b) / c)"),
+            ("a + b / c", "(a + (b / c))"),
+            ("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)"),
+            ("3 + 4; -5 * 5", "(3 + 4)((-5) * 5)"),
+            ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
+            ("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))"),
+            ("3 + 4 * 5 == 3 * 1 + 4 * 5", "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"),
+            ("true", "true"),
+            ("false", "false"),
+            ("3 > 5 == false", "((3 > 5) == false)"),
+            ("3 < 5 == true", "((3 < 5) == true)"),
+            ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
+            ("(5 + 5) * 2", "((5 + 5) * 2)"),
+            ("2 / (5 + 5)", "(2 / (5 + 5))"),
+            ("-(5 + 5)", "(-(5 + 5))"),
+            ("!(true == true)", "(!(true == true))"),
+            ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+            ("add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))"),
+            ("add(a + b + c * d / f + g)", "add((((a + b) + ((c * d) / f)) + g))"),
+            ("a * [1, 2, 3, 4][b * c] * d", "((a * ([1, 2, 3, 4][(b * c)])) * d)"),
+            ("add(a * b[2], b[1], 2 * [1, 2][1])", "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))"),
+        ];
+
+        for (input, expected) in tests {
+            let l = Lexer::new(input);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            check_parser_errors(&p);
+            assert_eq!(program.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn test_if_expression() {
+        let input = "if (x < y) { x }";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Expression(expr_stmt) = stmt {
+            if let ExpressionEnum::If(if_expr) = &expr_stmt.expression {
+                // More detailed checks needed here
+                assert!(if_expr.alternative.is_none());
+            } else {
+                panic!("Expression is not an IfExpression");
+            }
+        } else {
+            panic!("Statement is not an ExpressionStatement");
+        }
+    }
+
+    #[test]
+    fn test_if_else_expression() {
+        let input = "if (x < y) { x } else { y }";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Expression(expr_stmt) = stmt {
+            if let ExpressionEnum::If(if_expr) = &expr_stmt.expression {
+                assert!(if_expr.alternative.is_some());
+            } else {
+                panic!("Expression is not an IfExpression");
+            }
+        } else {
+            panic!("Statement is not an ExpressionStatement");
+        }
+    }
+
+    #[test]
+    fn test_function_literal_parsing() {
+        let input = "fn my_func(x, y) { x + y; }";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Expression(expr_stmt) = stmt {
+            if let ExpressionEnum::Function(func_lit) = &expr_stmt.expression {
+                assert_eq!(func_lit.parameters.len(), 2);
+                assert_eq!(func_lit.body.statements.len(), 1);
+            } else {
+                panic!("Expression is not a FunctionLiteral");
+            }
+        } else {
+            panic!("Statement is not an ExpressionStatement");
+        }
+    }
+
+    #[test]
+    fn test_call_expression_parsing() {
+        let input = "add(1, 2 * 3, 4 + 5);";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Expression(expr_stmt) = stmt {
+            if let ExpressionEnum::Call(call_expr) = &expr_stmt.expression {
+                assert_eq!(call_expr.arguments.len(), 3);
+            } else {
+                panic!("Expression is not a CallExpression");
+            }
+        } else {
+            panic!("Statement is not an ExpressionStatement");
+        }
+    }
+
+    #[test]
+    fn test_let_statements_no_semicolon() {
+        let input = "
+            let x = 5
+            let y = 10
+            let foobar = 838383
+        ";
+
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 3);
+
+        let tests = ["x", "y", "foobar"];
+        for (i, tt) in tests.iter().enumerate() {
+            let stmt = &program.statements[i];
+            assert!(test_let_statement(stmt, tt));
+        }
     }
 }
