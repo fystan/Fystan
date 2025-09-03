@@ -3,7 +3,7 @@ use crate::ast::{
     ArrayLiteral, BlockStatement, Boolean, CallExpression, ExpressionEnum, ExpressionStatement,
     FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression,
     InfixOperator, IntegerLiteral, LetStatement, PrefixExpression, PrefixOperator,
-    ReturnStatement, StringLiteral, Statement,
+    ReturnStatement, StringLiteral, Statement, WhileExpression, BreakStatement, ContinueStatement, ForExpression,
 };
 use crate::lexer::{Lexer, token::{Token, TokenType}};
 use std::collections::HashMap;
@@ -94,6 +94,8 @@ impl<'a> Parser<'a> {
         match self.cur_token.token_type {
             TokenType::Let => self.parse_let_statement().map(Statement::Let),
             TokenType::Return => self.parse_return_statement().map(Statement::Return),
+            TokenType::Break => self.parse_break_statement().map(Statement::Break),
+            TokenType::Continue => self.parse_continue_statement().map(Statement::Continue),
             _ => self.parse_expression_statement().map(Statement::Expression),
         }
     }
@@ -140,6 +142,22 @@ impl<'a> Parser<'a> {
             token,
             return_value,
         })
+    }
+
+    fn parse_break_statement(&mut self) -> Option<BreakStatement> {
+        let token = self.cur_token.clone();
+        if self.peek_token_is(&TokenType::Semicolon) {
+            self.next_token();
+        }
+        Some(BreakStatement { token })
+    }
+
+    fn parse_continue_statement(&mut self) -> Option<ContinueStatement> {
+        let token = self.cur_token.clone();
+        if self.peek_token_is(&TokenType::Semicolon) {
+            self.next_token();
+        }
+        Some(ContinueStatement { token })
     }
 
     fn parse_expression_statement(&mut self) -> Option<ExpressionStatement> {
@@ -202,6 +220,8 @@ impl<'a> Parser<'a> {
             TokenType::False => self.parse_boolean(false),
             TokenType::Lparen => self.parse_grouped_expression(),
             TokenType::If => self.parse_if_expression(),
+            TokenType::While => self.parse_while_expression(),
+            TokenType::For => self.parse_for_expression(),
             TokenType::Function => self.parse_function_literal(),
             TokenType::LBrack => self.parse_array_literal(),
             TokenType::LBrace => self.parse_hash_literal(),
@@ -418,6 +438,72 @@ impl<'a> Parser<'a> {
             condition,
             consequence,
             alternative,
+        }))
+    }
+
+    fn parse_for_expression(&mut self) -> Option<ExpressionEnum> {
+        let token = self.cur_token.clone(); // 'for' token
+
+        if !self.expect_peek(TokenType::Lparen) {
+            return None;
+        }
+
+        if !self.expect_peek(TokenType::Ident) {
+            return None;
+        }
+
+        let element = Identifier {
+            token: self.cur_token.clone(),
+            value: self.cur_token.literal.clone(),
+        };
+
+        if !self.expect_peek(TokenType::In) {
+            return None;
+        }
+
+        self.next_token();
+
+        let iterable = self.parse_expression(Precedence::Lowest)?;
+
+        if !self.expect_peek(TokenType::Rparen) {
+            return None;
+        }
+
+        if !self.expect_peek(TokenType::LBrace) {
+            return None;
+        }
+
+        let body = self.parse_block_statement()?;
+
+        Some(ExpressionEnum::For(ForExpression {
+            token,
+            element,
+            iterable: Box::new(iterable),
+            body,
+        }))
+    }
+
+    fn parse_while_expression(&mut self) -> Option<ExpressionEnum> {
+        let token = self.cur_token.clone();
+        if !self.expect_peek(TokenType::Lparen) {
+            return None;
+        }
+        self.next_token();
+        let condition = Box::new(self.parse_expression(Precedence::Lowest)?);
+
+        if !self.expect_peek(TokenType::Rparen) {
+            return None;
+        }
+        if !self.expect_peek(TokenType::LBrace) {
+            return None;
+        }
+
+        let body = self.parse_block_statement()?;
+
+        Some(ExpressionEnum::While(WhileExpression {
+            token,
+            condition,
+            body,
         }))
     }
 

@@ -1,3 +1,4 @@
+
 use std::fmt;
 impl fmt::Display for PrefixOperator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -74,6 +75,8 @@ pub enum Statement {
     Let(LetStatement),
     Return(ReturnStatement),
     Expression(ExpressionStatement),
+    Break(BreakStatement),
+    Continue(ContinueStatement),
 }
 
 impl Node for Statement {
@@ -82,6 +85,8 @@ impl Node for Statement {
             Statement::Let(s) => s.token_literal(),
             Statement::Return(s) => s.token_literal(),
             Statement::Expression(s) => s.token_literal(),
+            Statement::Break(s) => s.token_literal(),
+            Statement::Continue(s) => s.token_literal(),
         }
     }
 }
@@ -92,6 +97,8 @@ impl Display for Statement {
             Statement::Let(s) => write!(f, "{}", s),
             Statement::Return(s) => write!(f, "{}", s),
             Statement::Expression(s) => write!(f, "{}", s),
+            Statement::Break(s) => write!(f, "{}", s),
+            Statement::Continue(s) => write!(f, "{}", s),
         }
     }
 }
@@ -110,6 +117,8 @@ pub enum ExpressionEnum {
     ArrayLiteral(ArrayLiteral),
     IndexExpression(IndexExpression),
     HashLiteral(HashLiteral),
+    While(WhileExpression),
+    For(ForExpression),
 }
 
 impl Display for ExpressionEnum {
@@ -128,6 +137,8 @@ impl Display for ExpressionEnum {
             ExpressionEnum::ArrayLiteral(e) => write!(f, "{}", e),
             ExpressionEnum::IndexExpression(e) => write!(f, "{}", e),
             ExpressionEnum::HashLiteral(e) => write!(f, "{}", e),
+            ExpressionEnum::While(e) => write!(f, "{}", e),
+            ExpressionEnum::For(e) => write!(f, "{}", e),
         }
     }
 }
@@ -148,6 +159,8 @@ impl Node for ExpressionEnum {
             ExpressionEnum::ArrayLiteral(e) => e.token_literal(),
             ExpressionEnum::IndexExpression(e) => e.token_literal(),
             ExpressionEnum::HashLiteral(e) => e.token_literal(),
+            ExpressionEnum::While(e) => e.token_literal(),
+            ExpressionEnum::For(e) => e.token_literal(),
         }
     }
 }
@@ -209,6 +222,42 @@ impl Node for ReturnStatement {
 impl Display for ReturnStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} {};", self.token_literal(), self.return_value)
+    }
+}
+
+// Break Statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct BreakStatement {
+    pub token: Token,
+}
+
+impl Node for BreakStatement {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Display for BreakStatement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{};", self.token_literal())
+    }
+}
+
+// Continue Statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinueStatement {
+    pub token: Token,
+}
+
+impl Node for ContinueStatement {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Display for ContinueStatement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{};", self.token_literal())
     }
 }
 
@@ -325,7 +374,7 @@ impl Node for StringLiteral {
 impl Expression for StringLiteral {}
 impl Display for StringLiteral {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{}\"", self.value)
+        write!(f, ""{}"", self.value)
     }
 }
 
@@ -416,6 +465,56 @@ impl Display for IfExpression {
         Ok(())
     }
 }
+
+// While Expression
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhileExpression {
+    pub token: Token,
+    pub condition: Box<ExpressionEnum>,
+    pub body: BlockStatement,
+}
+
+impl Node for WhileExpression {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Expression for WhileExpression {}
+
+impl Display for WhileExpression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "while ({}) {}", self.condition, self.body)
+    }
+}
+
+// For Expression
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForExpression {
+    pub token: Token, // The 'for' token
+    pub element: Identifier, // The variable for each element
+    pub iterable: Box<ExpressionEnum>, // The expression being iterated over
+    pub body: BlockStatement, // The loop body
+}
+
+impl Node for ForExpression {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Expression for ForExpression {}
+
+impl Display for ForExpression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "for ({} in {}) {}",
+            self.element, self.iterable, self.body
+        )
+    }
+}
+
 
 // Function Literal
 #[derive(Debug, Clone)]

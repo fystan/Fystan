@@ -50,6 +50,11 @@ pub enum TokenType {
     If,
     Else,
     Return,
+    While,
+    Break,
+    Continue,
+    For,
+    In,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -82,6 +87,11 @@ impl Token {
             "if" => TokenType::If,
             "else" => TokenType::Else,
             "return" => TokenType::Return,
+            "while" => TokenType::While,
+            "break" => TokenType::Break,
+            "continue" => TokenType::Continue,
+            "for" => TokenType::For,
+            "in" => TokenType::In,
             _ => TokenType::Ident,
         }
     }
