@@ -18,31 +18,7 @@ struct Args {
 }
 
 fn main() {
-    let args = Args::parse();
-
-    let src = match fs::read_to_string(&args.source_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to read source file '{}': {}", args.source_path, e);
-            std::process::exit(1);
-        }
-    };
-
-    // Determine the output executable name based on the OS
-    let mut output_filename = args.output.clone();
-    if cfg!(windows) && !output_filename.ends_with(".exe") {
-        output_filename.push_str(".exe");
-    }
-
-    match Compiler::run_from_source(&src, &args.target, &output_filename) {
-        Ok(_) => {
-            println!("Successfully compiled '{}' to '{}'", args.source_path, output_filename);
-        }
-        Err(e) => {
-            eprintln!("Compilation failed: {}", e);
-            std::process::exit(1);
-        }
-    }
+    println!("Hello, world!");
 }
 
 #[cfg(test)]
