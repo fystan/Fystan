@@ -1,12 +1,10 @@
-use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, Node, PrefixOperator, Program, Statement};
+use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
 use crate::builtins;
-use crate::lexer::token::TokenType;
 use crate::parser::Parser;
 use llvm_sys::core::*; 
 use llvm_sys::prelude::*; 
 use llvm_sys::target::{LLVM_InitializeAllAsmParsers, LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs, LLVM_InitializeAllTargets};
-use llvm_sys::target_machine::{LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMRelocMode, LLVMTarget};
-use llvm_sys::{LLVMBasicBlockRef, LLVMType, LLVMValueRef};
+use llvm_sys::target_machine::{LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMRelocMode, LLVMGetTargetFromTriple, LLVMTargetMachineEmitToFile};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -151,8 +149,8 @@ impl Compiler {
                 let string_len_val = LLVMConstInt(LLVMInt64TypeInContext(self.context), string_len, 0);
 
                 let string_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b".str_struct_ptr\0".as_ptr() as *const _);
-                let ptr_field = LLVMBuildStructGEP(self.builder, string_struct_ptr, 0, b".ptr_field\0".as_ptr() as *const _);
-                let len_field = LLVMBuildStructGEP(self.builder, string_struct_ptr, 1, b".len_field\0".as_ptr() as *const _);
+                let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 0, b".ptr_field\0".as_ptr() as *const _);
+                let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 1, b".len_field\0".as_ptr() as *const _);
 
                 LLVMBuildStore(self.builder, global_string, ptr_field);
                 LLVMBuildStore(self.builder, string_len_val, len_field);
@@ -165,7 +163,7 @@ impl Compiler {
             ExpressionEnum::Identifier(ident) => {
                 if let Some(value) = self.variables.get(&ident.value) {
                     // Need to load based on the type of the alloca
-                    let var_type = LLVMGetAllocatedType(*value);
+                    let var_type = unsafe { LLVMGetAllocatedType(*value) };
                     unsafe { Ok(LLVMBuildLoad2(self.builder, var_type, *value, b"loadtmp\0".as_ptr() as *const _)) }
                 } else {
                     Err(format!("Unknown variable: {}", ident.value))
@@ -222,7 +220,7 @@ impl Compiler {
                         let i64_type = LLVMInt64TypeInContext(self.context);
                         let mut arg_types: Vec<_> = (0..args.len()).map(|_| i64_type).collect();
                         let fn_type = LLVMFunctionType(i64_type, arg_types.as_mut_ptr(), args.len() as u32, 0);
-                        Ok(LLVMBuildCall2(self.builder, fn_type, function, args.as_mut_ptr(), b"calltmp\0".as_ptr() as *const _))
+                        Ok(LLVMBuildCall2(self.builder, fn_type, function, args.as_mut_ptr(), args.len() as u32, b"calltmp\0".as_ptr() as *const _))
                     }
                 } else {
                     Err("Function name must be an identifier".to_string())
@@ -234,21 +232,20 @@ impl Compiler {
                 let array_len_val = LLVMConstInt(i64_type, array_len, 0);
 
                 // Allocate memory for elements on the heap (or stack for small arrays)
-                let array_ptr_type = LLVMPointerType(i64_type, 0);
-                let array_elements_ptr = LLVMBuildArrayMalloc(self.builder, i66_type, array_len_val, b"array_elements\0".as_ptr() as *const _);
+                let array_elements_ptr = LLVMBuildArrayMalloc(self.builder, i64_type, array_len_val, b"array_elements\0".as_ptr() as *const _);
 
                 // Store elements
                 for (i, element_expr) in arr_lit.elements.into_iter().enumerate() {
                     let element_val = self.compile_expression(element_expr)?;
-                    let index_val = LLVMConstInt(i64_type, i as u64, 0);
+                    let mut index_val = LLVMConstInt(i64_type, i as u64, 0);
                     let element_ptr = LLVMBuildGEP2(self.builder, i64_type, array_elements_ptr, &mut index_val, 1, b"element_ptr\0".as_ptr() as *const _);
                     LLVMBuildStore(self.builder, element_val, element_ptr);
                 }
 
                 // Create the array struct { i64*, i64 }
                 let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"array_struct_ptr\0".as_ptr() as *const _);
-                let ptr_field = LLVMBuildStructGEP(self.builder, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
-                let len_field = LLVMBuildStructGEP(self.builder, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
+                let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
+                let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
 
                 LLVMBuildStore(self.builder, array_elements_ptr, ptr_field);
                 LLVMBuildStore(self.builder, array_len_val, len_field);
@@ -257,13 +254,13 @@ impl Compiler {
             },
             ExpressionEnum::IndexExpression(idx_expr) => unsafe {
                 let array_val = self.compile_expression(*idx_expr.left)?;
-                let index_val = self.compile_expression(*idx_expr.index)?;
+                let mut index_val = self.compile_expression(*idx_expr.index)?;
 
                 // Assuming array_val is a { i64*, i64 } struct
                 let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_array_struct_ptr\0".as_ptr() as *const _);
                 LLVMBuildStore(self.builder, array_val, array_struct_ptr);
 
-                let elements_ptr_ptr = LLVMBuildStructGEP(self.builder, array_struct_ptr, 0, b"elements_ptr_ptr\0".as_ptr() as *const _);
+                let elements_ptr_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"elements_ptr_ptr\0".as_ptr() as *const _);
                 let elements_ptr = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt64TypeInContext(self.context), 0), elements_ptr_ptr, b"elements_ptr\0".as_ptr() as *const _);
 
                 let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_val, 1, b"indexed_element_ptr\0".as_ptr() as *const _);
@@ -281,29 +278,31 @@ impl Compiler {
                 }
                 let arg_val = self.compile_expression(args_expr[0].clone())?;
                 
-                let format_str_ptr = unsafe {
+                let (format_str_ptr, val_to_print) = unsafe {
                     let arg_type = LLVMTypeOf(arg_val);
                     // Check if the argument is a pointer (likely a string or array struct)
                     if LLVMGetTypeKind(arg_type) == llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
                         // For string/array struct, print the pointer part (i8*)
                         let struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_struct_ptr\0".as_ptr() as *const _);
                         LLVMBuildStore(self.builder, arg_val, struct_ptr);
-                        let ptr_field = LLVMBuildStructGEP(self.builder, struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
+                        let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
                         let loaded_ptr = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt64TypeInContext(self.context), 0), ptr_field, b"loaded_ptr\0".as_ptr() as *const _);
                         
                         // Cast i64* to i8* for %s format
                         let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
                         let casted_ptr = LLVMBuildBitCast(self.builder, loaded_ptr, i8_ptr_type, b"casted_ptr\0".as_ptr() as *const _);
                         
-                        LLVMBuildGlobalStringPtr(self.builder, b"%s\n\0".as_ptr() as *const _, b".str_format\0".as_ptr() as *const _)
+                        (LLVMBuildGlobalStringPtr(self.builder, b"%s\n\0".as_ptr() as *const _, b".str_format\0".as_ptr() as *const _), casted_ptr)
                     } else { // Assume integer for now
-                        LLVMBuildGlobalStringPtr(self.builder, b"%lld\n\0".as_ptr() as *const _, b".int_format\0".as_ptr() as *const _)
+                        (LLVMBuildGlobalStringPtr(self.builder, b"%lld\n\0".as_ptr() as *const _, b".int_format\0".as_ptr() as *const _), arg_val)
                     }
                 };
 
-                let mut printf_args = [format_str_ptr, arg_val];
+                let mut printf_args = [format_str_ptr, val_to_print];
                 unsafe {
-                    LLVMBuildCall(self.builder, self.printf_func, printf_args.as_mut_ptr(), 2, b"printf_call\0".as_ptr() as *const _);
+                    let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
+                    let printf_type = LLVMFunctionType(LLVMInt32TypeInContext(self.context), [i8_ptr_type].as_mut_ptr(), 1, 1);
+                    LLVMBuildCall2(self.builder, printf_type, self.printf_func, printf_args.as_mut_ptr(), 2, b"printf_call\0".as_ptr() as *const _);
                     Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) // print returns 0
                 }
             }
@@ -319,7 +318,7 @@ impl Compiler {
                         // Load the struct, then extract the length field
                         let struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_len_struct_ptr\0".as_ptr() as *const _);
                         LLVMBuildStore(self.builder, arg_val, struct_ptr);
-                        let len_field_ptr = LLVMBuildStructGEP(self.builder, struct_ptr, 1, b"len_field_ptr\0".as_ptr() as *const _);
+                        let len_field_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, struct_ptr, 1, b"len_field_ptr\0".as_ptr() as *const _);
                         Ok(LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), len_field_ptr, b"loaded_len\0".as_ptr() as *const _))
                     } else {
                         Err("len() argument must be a string or an array".to_string())
@@ -424,7 +423,7 @@ impl Compiler {
             let phi = LLVMBuildPhi(self.builder, LLVMInt64TypeInContext(self.context), b"iftmp\0".as_ptr() as *const _);
             let mut values = [then_val, else_val];
             let mut blocks = [then_bb, else_bb];
-            LLVMAddIncoming(phi, incoming_values.as_mut_ptr(), incoming_blocks.as_mut_ptr(), 2);
+            LLVMAddIncoming(phi, values.as_mut_ptr(), blocks.as_mut_ptr(), 2);
 
             Ok(phi)
         }
@@ -475,10 +474,10 @@ impl Compiler {
             let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_for_array_struct_ptr\0".as_ptr() as *const _);
             LLVMBuildStore(self.builder, array_struct_val, array_struct_ptr);
 
-            let elements_ptr_ptr = LLVMBuildStructGEP(self.builder, array_struct_ptr, 0, b"elements_ptr_ptr\0".as_ptr() as *const _);
+            let elements_ptr_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"elements_ptr_ptr\0".as_ptr() as *const _);
             let elements_ptr = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt64TypeInContext(self.context), 0), elements_ptr_ptr, b"elements_ptr\0".as_ptr() as *const _);
 
-            let len_ptr = LLVMBuildStructGEP(self.builder, array_struct_ptr, 1, b"len_ptr\0".as_ptr() as *const _);
+            let len_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_ptr\0".as_ptr() as *const _);
             let array_len_val = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), len_ptr, b"array_len_val\0".as_ptr() as *const _);
 
             // Create index variable
@@ -505,7 +504,7 @@ impl Compiler {
             // Body block
             LLVMPositionBuilderAtEnd(self.builder, body_bb);
             let element_alloca = self.create_entry_block_alloca(&for_expr.element.value);
-            let index_in_body = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), index_alloca, b"load_idx_body\0".as_ptr() as *const _);
+            let mut index_in_body = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), index_alloca, b"load_idx_body\0".as_ptr() as *const _);
             
             let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_in_body, 1, b"element_ptr\0".as_ptr() as *const _);
             let element_val = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), element_ptr, b"loaded_element\0".as_ptr() as *const _);

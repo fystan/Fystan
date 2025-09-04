@@ -374,7 +374,7 @@ impl Node for StringLiteral {
 impl Expression for StringLiteral {}
 impl Display for StringLiteral {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, ""{}"", self.value)
+        write!(f, "\"{}\"", self.value)
     }
 }
 
