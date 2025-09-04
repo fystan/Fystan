@@ -175,7 +175,11 @@ impl<'a> Lexer<'a> {
                         Some('r') => s.push('\r'),
                         Some('"') => s.push('"'),
                         Some('\\') => s.push('\\'),
-                        _ => s.push('\\'), // Keep unrecognized escape sequences as is
+                        Some(other) => {
+                            s.push('\\');
+                            s.push(other);
+                        }
+                        None => s.push('\\'), // Handle case where string ends with a single '\'
                     }
                 }
                 Some(ch) => s.push(ch),
@@ -229,4 +233,28 @@ fn is_letter(ch: char) -> bool {
 
 fn is_digit(ch: char) -> bool {
     ch.is_ascii_digit()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::token::{Token, TokenType};
+
+    #[test]
+    fn test_string_with_unrecognized_escape() {
+        let input = r#""\w""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next_token();
+        assert_eq!(token.token_type, TokenType::String);
+        assert_eq!(token.literal, r"\w");
+    }
+
+    #[test]
+    fn test_string_with_known_escapes() {
+        let input = r#""\n\t\r\"\\""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next_token();
+        assert_eq!(token.token_type, TokenType::String);
+        assert_eq!(token.literal, "\n\t\r\"\\");
+    }
 }
