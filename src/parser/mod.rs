@@ -35,6 +35,7 @@ lazy_static! {
         map.insert(TokenType::Minus, Precedence::Sum);
         map.insert(TokenType::Asterisk, Precedence::Product);
         map.insert(TokenType::Slash, Precedence::Product);
+        map.insert(TokenType::Mod, Precedence::Product);
         map.insert(TokenType::Lparen, Precedence::Call);
         map.insert(TokenType::LBrack, Precedence::Index);
         map.insert(TokenType::Dot, Precedence::Call);
@@ -180,6 +181,7 @@ impl<'a> Parser<'a> {
                 | TokenType::Minus
                 | TokenType::Asterisk
                 | TokenType::Slash
+                | TokenType::Mod
                 | TokenType::Eq
                 | TokenType::NotEq
                 | TokenType::Lt
@@ -261,6 +263,12 @@ impl<'a> Parser<'a> {
                 token: Token::new(TokenType::Slash, "/".to_string()),
                 left: Box::new(left),
                 operator: InfixOperator::Divide,
+                right: Box::new(right),
+            })),
+            TokenType::Mod => Some(ExpressionEnum::Infix(InfixExpression {
+                token: Token::new(TokenType::Mod, "%".to_string()),
+                left: Box::new(left),
+                operator: InfixOperator::Mod,
                 right: Box::new(right),
             })),
             TokenType::Eq => Some(ExpressionEnum::Infix(InfixExpression {

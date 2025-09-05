@@ -101,8 +101,9 @@ impl Compiler {
             Statement::Let(let_stmt) => {
                 let name = let_stmt.name.value;
                 let value = self.compile_expression(let_stmt.value)?;
+                let value_type = unsafe { LLVMTypeOf(value) };
 
-                let alloca = self.create_entry_block_alloca(&name);
+                let alloca = self.create_entry_block_alloca(&name, value_type);
                 unsafe { LLVMBuildStore(self.builder, value, alloca) };
 
                 self.variables.insert(name, alloca);
@@ -266,7 +267,65 @@ impl Compiler {
                 let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_val, 1, b"indexed_element_ptr\0".as_ptr() as *const _);
                 Ok(LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), element_ptr, b"indexed_element\0".as_ptr() as *const _))
             },
+            ExpressionEnum::Function(func_lit) => self.compile_function(func_lit),
             _ => Err(format!("Expression not yet implemented: {:?}", expression)),
+        }
+    }
+
+    fn compile_function(&mut self, func_lit: crate::ast::FunctionLiteral) -> Result<LLVMValueRef, String> {
+        unsafe {
+            let function_name = CString::new(func_lit.name.value.as_str()).unwrap();
+            let num_params = func_lit.parameters.len();
+
+            // Create function signature
+            let i64_type = LLVMInt64TypeInContext(self.context);
+            let mut param_types = vec![i64_type; num_params];
+            let function_type = LLVMFunctionType(i64_type, param_types.as_mut_ptr(), num_params as u32, 0);
+
+            // Add function to module
+            let function = LLVMAddFunction(self.module, function_name.as_ptr(), function_type);
+
+            // Create entry block
+            let entry = LLVMAppendBasicBlockInContext(self.context, function, b"entry\0".as_ptr() as *const _);
+
+            // Save current function and builder position, and variables
+            let old_function = self.function;
+            let old_builder_block = LLVMGetInsertBlock(self.builder);
+            let old_variables = self.variables.clone();
+
+            // Set new function context
+            self.function = Some(function);
+            self.variables.clear();
+            LLVMPositionBuilderAtEnd(self.builder, entry);
+
+            // Allocate space for parameters and store them
+            for (i, param) in func_lit.parameters.iter().enumerate() {
+                let param_name = &param.value;
+                let llvm_param = LLVMGetParam(function, i as u32);
+                let alloca = self.create_entry_block_alloca(param_name, i64_type);
+                LLVMBuildStore(self.builder, llvm_param, alloca);
+                self.variables.insert(param_name.clone(), alloca);
+            }
+
+            // Compile function body
+            self.compile_block_statement(func_lit.body)?;
+
+            // If the function does not have a terminator, add a default return
+            let last_block = LLVMGetLastBasicBlock(self.function.unwrap());
+            if LLVMGetBasicBlockTerminator(last_block).is_null() {
+                // Check if the last statement was a return, if not, add a default return 0
+                let zero = LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0);
+                LLVMBuildRet(self.builder, zero);
+            }
+
+            // Restore old function context
+            self.function = old_function;
+            self.variables = old_variables;
+            if !old_builder_block.is_null() {
+                LLVMPositionBuilderAtEnd(self.builder, old_builder_block);
+            }
+
+            Ok(function)
         }
     }
 
@@ -339,6 +398,7 @@ impl Compiler {
                 InfixOperator::Minus => Ok(LLVMBuildSub(self.builder, left, right, b"subtmp\0".as_ptr() as *const _)),
                 InfixOperator::Multiply => Ok(LLVMBuildMul(self.builder, left, right, b"multmp\0".as_ptr() as *const _)),
                 InfixOperator::Divide => Ok(LLVMBuildSDiv(self.builder, left, right, b"divtmp\0".as_ptr() as *const _)),
+                InfixOperator::Mod => Ok(LLVMBuildSRem(self.builder, left, right, b"remtmp\0".as_ptr() as *const _)),
                 InfixOperator::Eq => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"eqtmp\0".as_ptr() as *const _)),
                 InfixOperator::NotEq => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"neqtmp\0".as_ptr() as *const _)),
                 InfixOperator::Lt => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntSLT, left, right, b"lttmp\0".as_ptr() as *const _)),
@@ -481,8 +541,9 @@ impl Compiler {
             let array_len_val = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), len_ptr, b"array_len_val\0".as_ptr() as *const _);
 
             // Create index variable
-            let index_alloca = self.create_entry_block_alloca("__for_index");
-            let zero = LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0);
+            let i64_type = LLVMInt64TypeInContext(self.context);
+            let index_alloca = self.create_entry_block_alloca("__for_index", i64_type);
+            let zero = LLVMConstInt(i64_type, 0, 0);
             LLVMBuildStore(self.builder, zero, index_alloca);
 
             // Create basic blocks
@@ -497,17 +558,17 @@ impl Compiler {
 
             // Condition block
             LLVMPositionBuilderAtEnd(self.builder, cond_bb);
-            let index = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), index_alloca, b"load_idx\0".as_ptr() as *const _);
+            let index = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx\0".as_ptr() as *const _);
             let cond = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntULT, index, array_len_val, b"forcond\0".as_ptr() as *const _);
             LLVMBuildCondBr(self.builder, cond, body_bb, after_bb);
 
             // Body block
             LLVMPositionBuilderAtEnd(self.builder, body_bb);
-            let element_alloca = self.create_entry_block_alloca(&for_expr.element.value);
-            let mut index_in_body = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), index_alloca, b"load_idx_body\0".as_ptr() as *const _);
+            let element_alloca = self.create_entry_block_alloca(&for_expr.element.value, i64_type);
+            let mut index_in_body = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx_body\0".as_ptr() as *const _);
             
-            let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_in_body, 1, b"element_ptr\0".as_ptr() as *const _);
-            let element_val = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), element_ptr, b"loaded_element\0".as_ptr() as *const _);
+            let element_ptr = LLVMBuildGEP2(self.builder, i64_type, elements_ptr, &mut index_in_body, 1, b"element_ptr\0".as_ptr() as *const _);
+            let element_val = LLVMBuildLoad2(self.builder, i64_type, element_ptr, b"loaded_element\0".as_ptr() as *const _);
             LLVMBuildStore(self.builder, element_val, element_alloca);
             self.variables.insert(for_expr.element.value.clone(), element_alloca);
 
@@ -539,7 +600,7 @@ impl Compiler {
         Ok(result)
     }
 
-    fn create_entry_block_alloca(&mut self, name: &str) -> LLVMValueRef {
+    fn create_entry_block_alloca(&mut self, name: &str, ty: LLVMTypeRef) -> LLVMValueRef {
         unsafe {
             let function = self.function.unwrap();
             let builder = LLVMCreateBuilderInContext(self.context);
@@ -553,7 +614,7 @@ impl Compiler {
             }
 
             let c_name = CString::new(name).unwrap();
-            let alloca = LLVMBuildAlloca(builder, LLVMInt64TypeInContext(self.context), c_name.as_ptr());
+            let alloca = LLVMBuildAlloca(builder, ty, c_name.as_ptr());
             LLVMDisposeBuilder(builder);
             alloca
         }
@@ -607,7 +668,7 @@ impl Compiler {
                 cpu.as_ptr(),
                 features.as_ptr(),
                 LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
-                LLVMRelocMode::LLVMRelocDefault,
+                LLVMRelocMode::LLVMRelocPIC,
                 LLVMCodeModel::LLVMCodeModelDefault,
             );
             if target_machine.is_null() {
