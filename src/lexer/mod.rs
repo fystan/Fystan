@@ -136,6 +136,7 @@ impl<'a> Lexer<'a> {
             Some(']') => Token::new(TokenType::RBrack, "]".to_string()),
             Some(':') => Token::new(TokenType::Colon, ":".to_string()),
             Some('.') => Token::new(TokenType::Dot, ".".to_string()),
+            Some('%') => Token::new(TokenType::Mod, "%".to_string()),
             Some('"') => {
                 Token::new(TokenType::String, self.read_string())
             }

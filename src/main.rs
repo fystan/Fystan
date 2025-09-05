@@ -1,6 +1,7 @@
-use fystan::codegen::Compiler;
 use clap::Parser;
+use fystan::codegen::Compiler;
 use std::fs;
+use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -8,17 +9,38 @@ struct Args {
     /// The source file to compile
     source_path: String,
 
-    /// The target triple to compile for (e.g., "x86_64-pc-windows-msvc")
+    /// The target triple to compile for (e.g., "x86_64-unknown-linux-gnu")
     #[arg(short, long)]
     target: String,
 
     /// The output file name
-    #[arg(short, long, default_value = "output")]
-    output: String,
+    #[arg(short, long)]
+    output: Option<String>,
 }
 
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+
+    let source_code = match fs::read_to_string(&args.source_path) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error reading source file '{}': {}", args.source_path, e);
+            std::process::exit(1);
+        }
+    };
+
+    let output_path = args.output.unwrap_or_else(|| {
+        let path = Path::new(&args.source_path);
+        path.with_extension("o").to_str().unwrap().to_string()
+    });
+
+    match Compiler::run_from_source(&source_code, &args.target, &output_path) {
+        Ok(_) => println!("Compilation successful! Output written to {}", output_path),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 #[cfg(test)]

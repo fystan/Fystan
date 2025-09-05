@@ -41,6 +41,7 @@ pub enum TokenType {
     RBrack, // `]` 토큰
     Colon,
     Dot,
+    Mod, // `%`
 
     // Keywords
     Function,

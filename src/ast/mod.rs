@@ -17,6 +17,7 @@ impl fmt::Display for InfixOperator {
             InfixOperator::Minus => "-",
             InfixOperator::Multiply => "*",
             InfixOperator::Divide => "/",
+            InfixOperator::Mod => "%",
             InfixOperator::Eq => "==",
             InfixOperator::NotEq => "!=",
             InfixOperator::Lt => "<",
@@ -56,6 +57,7 @@ pub enum InfixOperator {
     Minus,      // -
     Multiply,   // *
     Divide,     // /
+    Mod,        // %
     Eq,         // ==
     NotEq,      // !=
     Lt,         // <
