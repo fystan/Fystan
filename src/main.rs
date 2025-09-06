@@ -17,13 +17,14 @@ enum Commands {
 }
 
 #[derive(Parser, Debug)]
+#[command(disable_help_flag = true)]
 struct BuildArgs {
-    /// The source file to compile
-    source_path: String,
-
     /// The target triple to compile for (e.g., "windows:amd64")
     #[arg(short, long)]
     target: String,
+
+    /// The source file to compile
+    source_path: String,
 
     /// The output file name
     #[arg(short, long)]
