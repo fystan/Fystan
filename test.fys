@@ -1,0 +1,47 @@
+// Fystan test program
+
+// Function to calculate factorial recursively
+fn factorial(n) {
+    if (n == 0) {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
+// Function with a while loop
+fn countdown(start) {
+    let i = start;
+    while (i > 0) {
+        print(i);
+        i = i - 1;
+    }
+    print("Blast off!");
+}
+
+// Main part of the script
+let x = 5;
+let fact_x = factorial(x);
+print("Factorial of 5 is:");
+print(fact_x);
+
+countdown(3);
+
+let my_array = [10, 20, 30, "hello", 40.5];
+print("Iterating over an array:");
+for (item in my_array) {
+    print(item);
+}
+
+let a = 10;
+let b = 20;
+
+if (a < b) {
+    print("a is less than b");
+} else {
+    print("a is not less than b");
+}
+
+let c = true && false;
+print("c is:");
+print(c);
