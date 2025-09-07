@@ -35,7 +35,7 @@ fystan build --target OS:architecture example.fys
 fystan build --target windows:amd64 main.fys
 ```
 
-The output will be an **object file (.obj)** for your selected target architecture.  
+The output will be a **native executable file** for your selected target architecture.
 All compiler output and errors are in **English**.
 
 ### Supported Targets

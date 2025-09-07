@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 use fystan::codegen::Compiler;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use tempfile::Builder;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -44,11 +46,17 @@ fn main() {
                 }
             };
 
-            let output_path = args.output.unwrap_or_else(|| {
+            // 1. Determine output path for the final executable
+            let output_path = args.output.map(PathBuf::from).unwrap_or_else(|| {
                 let path = Path::new(&args.source_path);
-                path.with_extension("o").to_str().unwrap().to_string()
+                path.with_extension("")
             });
 
+            // 2. Create a temporary directory for the .o file
+            let tmp_dir = Builder::new().prefix("fystan").tempdir().unwrap();
+            let obj_path = tmp_dir.path().join("output.o");
+
+            // 3. Get the target triple
             let target_triple = match map_target_to_triple(&args.target) {
                 Some(triple) => triple,
                 None => {
@@ -57,10 +65,32 @@ fn main() {
                 }
             };
 
-            match Compiler::run_from_source(&source_code, target_triple, &output_path) {
-                Ok(_) => println!("Compilation successful! Output written to {}", output_path),
+            // 4. Compile to object file in the temporary directory
+            if let Err(e) = Compiler::run_from_source(&source_code, target_triple, obj_path.to_str().unwrap()) {
+                eprintln!("Compilation Error: {}", e);
+                std::process::exit(1);
+            }
+
+            // 5. Link the object file into an executable
+            let linker_output = Command::new("clang")
+                .arg(obj_path)
+                .arg("-o")
+                .arg(&output_path)
+                .output();
+
+            match linker_output {
+                Ok(output) => {
+                    if !output.status.success() {
+                        eprintln!(
+                            "Linker error:\n{}",
+                            String::from_utf8_lossy(&output.stderr)
+                        );
+                        std::process::exit(1);
+                    }
+                    println!("Build successful! Executable written to {}", output_path.to_str().unwrap());
+                }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Failed to run linker: {}", e);
                     std::process::exit(1);
                 }
             }
