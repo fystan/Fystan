@@ -16,6 +16,8 @@ pub struct LoopContext {
     after_bb: LLVMBasicBlockRef,
 }
 
+use llvm_sys::LLVMLinkage;
+
 pub struct Compiler {
     context: LLVMContextRef,
     module: LLVMModuleRef,
@@ -23,8 +25,13 @@ pub struct Compiler {
     variables: HashMap<String, LLVMValueRef>,
     function: Option<LLVMValueRef>,
     loop_contexts: Vec<LoopContext>,
-    printf_func: LLVMValueRef, // Reference to the C printf function
-    array_type: LLVMTypeRef, // Custom type for arrays: { i64*, i64 }
+    printf_func: LLVMValueRef,
+    fgets_func: LLVMValueRef,
+    fgets_type: LLVMTypeRef,
+    strlen_func: LLVMValueRef,
+    strlen_type: LLVMTypeRef,
+    stdin_ptr: LLVMValueRef,
+    array_type: LLVMTypeRef,
 }
 
 impl Compiler {
@@ -33,13 +40,24 @@ impl Compiler {
             let module = LLVMModuleCreateWithNameInContext(b"fystan_module\0".as_ptr() as *const _, context);
             let builder = LLVMCreateBuilderInContext(context);
 
-            // Declare printf function
             let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-            let printf_type = LLVMFunctionType(LLVMInt32TypeInContext(context), [i8_ptr_type].as_mut_ptr(), 1, 1); // 1 = is_var_arg
+            let i32_type = LLVMInt32TypeInContext(context);
+            let i64_type = LLVMInt64TypeInContext(context);
+
+            let printf_type = LLVMFunctionType(i32_type, [i8_ptr_type].as_mut_ptr(), 1, 1);
             let printf_func = LLVMAddFunction(module, b"printf\0".as_ptr() as *const _, printf_type);
 
-            // Define array type: { i64*, i64 } (pointer to elements, length)
-            let i64_type = LLVMInt64TypeInContext(context);
+            let file_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
+            let fgets_type = LLVMFunctionType(i8_ptr_type, [i8_ptr_type, i32_type, file_type].as_mut_ptr(), 3, 0);
+            let fgets_func = LLVMAddFunction(module, b"fgets\0".as_ptr() as *const _, fgets_type);
+
+            let strlen_type = LLVMFunctionType(i64_type, [i8_ptr_type].as_mut_ptr(), 1, 0);
+            let strlen_func = LLVMAddFunction(module, b"strlen\0".as_ptr() as *const _, strlen_type);
+
+            let stdin_name = CString::new("stdin").unwrap();
+            let stdin_ptr = LLVMAddGlobal(module, file_type, stdin_name.as_ptr());
+            LLVMSetLinkage(stdin_ptr, LLVMLinkage::LLVMExternalLinkage);
+
             let array_struct_types = [LLVMPointerType(i64_type, 0), i64_type];
             let array_type = LLVMStructTypeInContext(context, array_struct_types.as_ptr() as *mut _, 2, 0);
 
@@ -51,6 +69,11 @@ impl Compiler {
                 function: None,
                 loop_contexts: Vec::new(),
                 printf_func,
+                fgets_func,
+                fgets_type,
+                strlen_func,
+                strlen_type,
+                stdin_ptr,
                 array_type,
             }
         }
@@ -382,6 +405,41 @@ impl Compiler {
                     } else {
                         Err("len() argument must be a string or an array".to_string())
                     }
+                }
+            }
+            "read_line" => {
+                if !args_expr.is_empty() {
+                    return Err("read_line() takes no arguments".to_string());
+                }
+                unsafe {
+                    let i8_type = LLVMInt8TypeInContext(self.context);
+                    let i32_type = LLVMInt32TypeInContext(self.context);
+                    let buffer_size = 2048; // Max input size
+                    let buffer_size_val = LLVMConstInt(i32_type, buffer_size as u64, 0);
+
+                    // Allocate buffer on the stack
+                    let buffer = LLVMBuildArrayAlloca(self.builder, i8_type, buffer_size_val, b"read_line_buf\0".as_ptr() as *const _);
+
+                    // Load stdin
+                    let stdin = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), self.stdin_ptr, b"stdin\0".as_ptr() as *const _);
+
+                    // Call fgets
+                    let mut fgets_args = [buffer, buffer_size_val, stdin];
+                    LLVMBuildCall2(self.builder, self.fgets_type, self.fgets_func, fgets_args.as_mut_ptr(), 3, b"fgets_call\0".as_ptr() as *const _);
+
+                    // Call strlen to get the actual length
+                    let mut strlen_args = [buffer];
+                    let string_len = LLVMBuildCall2(self.builder, self.strlen_type, self.strlen_func, strlen_args.as_mut_ptr(), 1, b"strlen_call\0".as_ptr() as *const _);
+
+                    // Create the Fystan string struct
+                    let string_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"read_line_struct_ptr\0".as_ptr() as *const _);
+                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 0, b".ptr_field\0".as_ptr() as *const _);
+                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 1, b".len_field\0".as_ptr() as *const _);
+
+                    LLVMBuildStore(self.builder, buffer, ptr_field);
+                    LLVMBuildStore(self.builder, string_len, len_field);
+
+                    Ok(LLVMBuildLoad2(self.builder, self.array_type, string_struct_ptr, b".loaded_read_line_struct\0".as_ptr() as *const _))
                 }
             }
             _ => Err(format!("Unknown builtin function: {}", builtin.name))
