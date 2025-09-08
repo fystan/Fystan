@@ -21,6 +21,11 @@ lazy_static! {
             min_args: 1,
             max_args: 1,
         });
+        m.insert("read_line", Builtin {
+            name: "read_line",
+            min_args: 0,
+            max_args: 0,
+        });
         m
     };
 }

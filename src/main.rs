@@ -294,4 +294,15 @@ mod tests {
         ";
         assert_compiles_ok(code);
     }
+
+    #[test]
+    fn test_read_line_builtin() {
+        let code = "
+            let line = read_line();
+            // We can't test the actual output, but we can print it
+            // to see that it compiles and runs.
+            print(line);
+        ";
+        assert_compiles_ok(code);
+    }
 }
