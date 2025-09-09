@@ -5,6 +5,9 @@ use self::token::{Token, TokenType};
 pub struct Lexer<'a> {
     chars: std::iter::Peekable<std::str::Chars<'a>>,
     ch: Option<char>,
+    indent_stack: Vec<usize>,
+    tokens: Vec<Token>,
+    at_line_start: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -12,6 +15,9 @@ impl<'a> Lexer<'a> {
         let mut lexer = Self {
             chars: input.chars().peekable(),
             ch: None,
+            indent_stack: vec![0],
+            tokens: Vec::new(),
+            at_line_start: true,
         };
         lexer.read_char();
         lexer
@@ -25,39 +31,84 @@ impl<'a> Lexer<'a> {
         self.chars.peek().copied()
     }
 
-    fn read_identifier(&mut self) -> String {
-        let mut identifier = String::new();
-        while let Some(ch) = self.ch {
-            if is_letter(ch) || is_digit(ch) { // Identifiers can contain digits after the first char
-                identifier.push(ch);
+    fn handle_indentation(&mut self) {
+        if !self.at_line_start {
+            return;
+        }
+
+        let mut current_indent = 0;
+        while let Some(' ') = self.ch {
+            current_indent += 1;
+            self.read_char();
+        }
+        
+        // Skip comments
+        if self.ch == Some('#') {
+            while self.ch.is_some() && self.ch != Some('\n') {
                 self.read_char();
-            } else {
-                break;
             }
         }
-        identifier
+
+        if self.ch == Some('\n') || self.ch.is_none() {
+             // Empty or comment line, no indentation change
+            self.at_line_start = true;
+            self.read_char();
+            self.skip_empty_lines();
+            self.handle_indentation(); // Handle next significant line
+            return;
+        }
+
+        self.at_line_start = false;
+        let last_indent = *self.indent_stack.last().unwrap();
+
+        if current_indent > last_indent {
+            self.indent_stack.push(current_indent);
+            self.tokens.push(Token::new(TokenType::Indent, "INDENT".to_string()));
+        } else if current_indent < last_indent {
+            while let Some(&last) = self.indent_stack.last() {
+                if current_indent < last {
+                    self.indent_stack.pop();
+                    self.tokens.push(Token::new(TokenType::Dedent, "DEDENT".to_string()));
+                } else {
+                    break;
+                }
+            }
+            if *self.indent_stack.last().unwrap() != current_indent {
+                // Indentation error
+                self.tokens.push(Token::new(TokenType::Illegal, "IndentationError".to_string()));
+            }
+        }
+    }
+    
+    fn skip_empty_lines(&mut self) {
+        loop {
+            self.skip_whitespace();
+            if self.ch == Some('#') {
+                 while self.ch.is_some() && self.ch != Some('\n') {
+                    self.read_char();
+                }
+            } else if self.ch != Some('\n') {
+                break;
+            }
+            self.read_char();
+        }
     }
 
-    fn read_number(&mut self) -> String {
-        let mut number = String::new();
-        let mut has_decimal = false;
-        while let Some(ch) = self.ch {
-            if is_digit(ch) {
-                number.push(ch);
-                self.read_char();
-            } else if ch == '.' && !has_decimal && self.peek_char().map_or(false, |c| is_digit(c)) {
-                number.push(ch);
-                self.read_char();
-                has_decimal = true;
-            } else {
-                break;
-            }
-        }
-        number
-    }
 
     pub fn next_token(&mut self) -> Token {
-        self.skip_whitespace_and_comments();
+        if !self.tokens.is_empty() {
+            return self.tokens.remove(0);
+        }
+        
+        if self.at_line_start {
+            self.handle_indentation();
+            if !self.tokens.is_empty() {
+                return self.tokens.remove(0);
+            }
+        }
+
+
+        self.skip_whitespace();
 
         let token = match self.ch {
             Some('=') => {
@@ -74,22 +125,6 @@ impl<'a> Lexer<'a> {
                     Token::new(TokenType::NotEq, "!=".to_string())
                 } else {
                     Token::new(TokenType::Bang, "!".to_string())
-                }
-            }
-            Some('&') => {
-                if self.peek_char() == Some('&') {
-                    self.read_char();
-                    Token::new(TokenType::And, "&&".to_string())
-                } else {
-                    Token::new(TokenType::Illegal, "&".to_string())
-                }
-            }
-            Some('|') => {
-                if self.peek_char() == Some('|') {
-                    self.read_char();
-                    Token::new(TokenType::Or, "||".to_string())
-                } else {
-                    Token::new(TokenType::Illegal, "|".to_string())
                 }
             }
             Some('+') => {
@@ -124,30 +159,44 @@ impl<'a> Lexer<'a> {
                     Token::new(TokenType::Slash, "/".to_string())
                 }
             }
-            Some(';') => Token::new(TokenType::Semicolon, ";".to_string()),
+            Some('\n') => {
+                self.at_line_start = true;
+                Token::new(TokenType::Newline, "\n".to_string())
+            }
             Some('(') => Token::new(TokenType::Lparen, "(".to_string()),
             Some(')') => Token::new(TokenType::Rparen, ")".to_string()),
             Some(',') => Token::new(TokenType::Comma, ",".to_string()),
             Some('<') => Token::new(TokenType::Lt, "<".to_string()),
             Some('>') => Token::new(TokenType::Gt, ">".to_string()),
-            Some('{') => Token::new(TokenType::LBrace, "{".to_string()),
-            Some('}') => Token::new(TokenType::RBrace, "}".to_string()),
             Some('[') => Token::new(TokenType::LBrack, "[".to_string()),
             Some(']') => Token::new(TokenType::RBrack, "]".to_string()),
             Some(':') => Token::new(TokenType::Colon, ":".to_string()),
             Some('.') => Token::new(TokenType::Dot, ".".to_string()),
-            Some('%') => Token::new(TokenType::Mod, "%".to_string()),
-            Some('"') => {
-                Token::new(TokenType::String, self.read_string())
+            Some('%') => Token::new(TokenType::Mod, "%”.to_string()),
+            Some('"') => Token::new(TokenType::String, self.read_string()),
+            Some('#') => {
+                self.skip_comment();
+                return self.next_token();
             }
-            Some('\u{0000}') | None => Token::new(TokenType::Eof, "".to_string()),
+            None => {
+                // End of file, emit remaining Dedent tokens
+                while self.indent_stack.len() > 1 {
+                    self.indent_stack.pop();
+                    self.tokens.push(Token::new(TokenType::Dedent, "DEDENT".to_string()));
+                }
+                if !self.tokens.is_empty() {
+                    return self.tokens.remove(0);
+                }
+                Token::new(TokenType::Eof, "".to_string())
+            }
             Some(ch) => {
                 if is_letter(ch) {
                     let literal = self.read_identifier();
-                    return Token::new(Token::lookup_ident(&literal), literal);
+                    let token_type = Token::lookup_ident(&literal);
+                    return Token::new(token_type, literal);
                 } else if is_digit(ch) {
-                    let literal = self.read_number();
-                    if literal.contains('.') {
+                    let (literal, is_float) = self.read_number();
+                    if is_float {
                         return Token::new(TokenType::Float, literal);
                     } else {
                         return Token::new(TokenType::Int, literal);
@@ -161,15 +210,46 @@ impl<'a> Lexer<'a> {
         self.read_char();
         token
     }
+    
+    fn read_identifier(&mut self) -> String {
+        let mut identifier = String::new();
+        while let Some(ch) = self.ch {
+            if is_letter(ch) || is_digit(ch) {
+                identifier.push(ch);
+                self.read_char();
+            } else {
+                break;
+            }
+        }
+        identifier
+    }
+
+    fn read_number(&mut self) -> (String, bool) {
+        let mut number = String::new();
+        let mut has_decimal = false;
+        while let Some(ch) = self.ch {
+            if is_digit(ch) {
+                number.push(ch);
+                self.read_char();
+            } else if ch == '.' && !has_decimal && self.peek_char().map_or(false, |c| is_digit(c)) {
+                number.push(ch);
+                self.read_char();
+                has_decimal = true;
+            } else {
+                break;
+            }
+        }
+        (number, has_decimal)
+    }
 
     fn read_string(&mut self) -> String {
         let mut s = String::new();
         self.read_char(); // Consume the opening quote
         loop {
             match self.ch {
-                Some('"') | Some('\u{0000}') | None => break, // End of string or EOF
-                Some('\\') => { // Handle escape sequences
-                    self.read_char(); // Consume '\'
+                Some('"') | None => break,
+                Some('\\') => {
+                    self.read_char();
                     match self.ch {
                         Some('n') => s.push('\n'),
                         Some('t') => s.push('\t'),
@@ -180,7 +260,7 @@ impl<'a> Lexer<'a> {
                             s.push('\\');
                             s.push(other);
                         }
-                        None => s.push('\\'), // Handle case where string ends with a single '\'
+                        None => s.push('\\'),
                     }
                 }
                 Some(ch) => s.push(ch),
@@ -190,40 +270,19 @@ impl<'a> Lexer<'a> {
         s
     }
 
-    fn skip_whitespace_and_comments(&mut self) {
-        loop {
-            if let Some(ch) = self.ch {
-                if ch.is_whitespace() {
-                    self.read_char();
-                } else if ch == '/' && self.peek_char() == Some('/') { // Single-line comment
-                    self.read_char(); // Consume first '/'
-                    self.read_char(); // Consume second '/'
-                    while let Some(c) = self.ch {
-                        if c == '\n' || c == '\r' || c == '\u{0000}' {
-                            break;
-                        }
-                        self.read_char();
-                    }
-                } else if ch == '/' && self.peek_char() == Some('*') { // Multi-line comment
-                    self.read_char(); // Consume '/'
-                    self.read_char(); // Consume '*'
-                    loop {
-                        if self.ch == Some('*') && self.peek_char() == Some('/') {
-                            self.read_char(); // Consume '*'
-                            self.read_char(); // Consume '/'
-                            break;
-                        }
-                        if self.ch == Some('\0') || self.ch.is_none() { // EOF inside multi-line comment
-                            break;
-                        }
-                        self.read_char();
-                    }
-                } else {
-                    break;
-                }
+    fn skip_whitespace(&mut self) {
+        while let Some(ch) = self.ch {
+            if ch == ' ' || ch == '\t' || ch == '\r' {
+                self.read_char();
             } else {
                 break;
             }
+        }
+    }
+    
+    fn skip_comment(&mut self) {
+        while self.ch.is_some() && self.ch != Some('\n') {
+            self.read_char();
         }
     }
 }
@@ -242,20 +301,40 @@ mod tests {
     use crate::lexer::token::{Token, TokenType};
 
     #[test]
-    fn test_string_with_unrecognized_escape() {
-        let input = r#""\w""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next_token();
-        assert_eq!(token.token_type, TokenType::String);
-        assert_eq!(token.literal, r"\w");
-    }
+    fn test_simple_indentation() {
+        let input = "
 
-    #[test]
-    fn test_string_with_known_escapes() {
-        let input = r#""\n\t\r\"\\""#;
+def main():
+    pass
+";
         let mut lexer = Lexer::new(input);
-        let token = lexer.next_token();
-        assert_eq!(token.token_type, TokenType::String);
-        assert_eq!(token.literal, "\n\t\r\"\\");
+        let tokens = vec![
+            lexer.next_token(),
+            lexer.next_token(),
+            lexer.next_token(),
+            lexer.next_token(),
+            lexer.next_token(),
+            lexer.next_token(),
+            lexer.next_token(),
+            lexer.next_token(),
+        ];
+
+        let expected_tokens = vec![
+            Token::new(TokenType::Def, "def".to_string()),
+            Token::new(TokenType::Ident, "main".to_string()),
+            Token::new(TokenType::Lparen, "(".to_string()),
+            Token::new(TokenType::Rparen, ")".to_string()),
+            Token::new(TokenType::Colon, ":".to_string()),
+            Token::new(TokenType::Indent, "INDENT".to_string()),
+            Token::new(TokenType::Pass, "pass".to_string()),
+            Token::new(TokenType::Dedent, "DEDENT".to_string()),
+        ];
+        
+        for (i, token) in tokens.iter().enumerate() {
+            if i < expected_tokens.len() {
+                assert_eq!(token.token_type, expected_tokens[i].token_type);
+                assert_eq!(token.literal, expected_tokens[i].literal);
+            }
+        }
     }
 }

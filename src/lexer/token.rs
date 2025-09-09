@@ -9,7 +9,7 @@ pub enum TokenType {
     // Identifiers + literals
     Ident,
     Int,
-    Float, // 부동 소수점 숫자 추가
+    Float,
     String,
 
     // Operators
@@ -23,29 +23,28 @@ pub enum TokenType {
     Gt,
     Eq,
     NotEq,
-    And, // 논리 AND (&&)
-    Or,  // 논리 OR (||)
-    PlusEq,    // +=
-    MinusEq,   // -=
-    AsteriskEq, // *=
-    SlashEq,   // /=
+    PlusEq,
+    MinusEq,
+    AsteriskEq,
+    SlashEq,
+    Mod,
 
     // Delimiters
     Comma,
-    Semicolon,
     Lparen,
     Rparen,
-    LBrace, // `{` 토큰
-    RBrace, // `}` 토큰
-    LBrack, // `[` 토큰
-    RBrack, // `]` 토큰
+    LBrack,
+    RBrack,
     Colon,
     Dot,
-    Mod, // `%`
+
+    // Indentation
+    Indent,
+    Dedent,
+    Newline,
 
     // Keywords
-    Function,
-    Let,
+    Def,
     True,
     False,
     If,
@@ -56,9 +55,30 @@ pub enum TokenType {
     Continue,
     For,
     In,
+    And,
+    Or,
+    Not,
+    Class,
+    Import,
+    From,
+    As,
+    Pass,
+    Is,
+    Del,
+    Global,
+    Nonlocal,
+    Assert,
+    Async,
+    Await,
+    Yield,
+    Lambda,
+    With,
+    Try,
+    Except,
+    Finally,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub literal: String,
@@ -81,10 +101,9 @@ impl Token {
 
     pub fn lookup_ident(ident: &str) -> TokenType {
         match ident {
-            "fn" => TokenType::Function,
-            "let" => TokenType::Let,
-            "true" => TokenType::True,
-            "false" => TokenType::False,
+            "def" => TokenType::Def,
+            "True" => TokenType::True,
+            "False" => TokenType::False,
             "if" => TokenType::If,
             "else" => TokenType::Else,
             "return" => TokenType::Return,
@@ -93,6 +112,27 @@ impl Token {
             "continue" => TokenType::Continue,
             "for" => TokenType::For,
             "in" => TokenType::In,
+            "and" => TokenType::And,
+            "or" => TokenType::Or,
+            "not" => TokenType::Not,
+            "class" => TokenType::Class,
+            "import" => TokenType::Import,
+            "from" => TokenType::From,
+            "as" => TokenType::As,
+            "pass" => TokenType::Pass,
+            "is" => TokenType::Is,
+            "del" => TokenType::Del,
+            "global" => TokenType::Global,
+            "nonlocal" => TokenType::Nonlocal,
+            "assert" => TokenType::Assert,
+            "async" => TokenType::Async,
+            "await" => TokenType::Await,
+            "yield" => TokenType::Yield,
+            "lambda" => TokenType::Lambda,
+            "with" => TokenType::With,
+            "try" => TokenType::Try,
+            "except" => TokenType::Except,
+            "finally" => TokenType::Finally,
             _ => TokenType::Ident,
         }
     }
