@@ -124,7 +124,7 @@ impl<'a> Lexer<'a> {
                     self.read_char();
                     Token::new(TokenType::NotEq, "!=".to_string())
                 } else {
-                    Token::new(TokenType::Bang, "!".to_string())
+                    Token::new(TokenType::Illegal, "!".to_string())
                 }
             }
             Some('+') => {
@@ -165,6 +165,8 @@ impl<'a> Lexer<'a> {
             }
             Some('(') => Token::new(TokenType::Lparen, "(".to_string()),
             Some(')') => Token::new(TokenType::Rparen, ")".to_string()),
+            Some('{') => Token::new(TokenType::LBrace, "{".to_string()),
+            Some('}') => Token::new(TokenType::RBrace, "}".to_string()),
             Some(',') => Token::new(TokenType::Comma, ",".to_string()),
             Some('<') => Token::new(TokenType::Lt, "<".to_string()),
             Some('>') => Token::new(TokenType::Gt, ">".to_string()),
@@ -172,8 +174,9 @@ impl<'a> Lexer<'a> {
             Some(']') => Token::new(TokenType::RBrack, "]".to_string()),
             Some(':') => Token::new(TokenType::Colon, ":".to_string()),
             Some('.') => Token::new(TokenType::Dot, ".".to_string()),
-            Some('%') => Token::new(TokenType::Mod, "%”.to_string()),
-            Some('"') => Token::new(TokenType::String, self.read_string()),
+            Some('%') => Token::new(TokenType::Mod, "%".to_string()),
+            Some('"') => Token::new(TokenType::String, self.read_string('"')),
+            Some('\'') => Token::new(TokenType::String, self.read_string('\'')),
             Some('#') => {
                 self.skip_comment();
                 return self.next_token();
@@ -242,25 +245,27 @@ impl<'a> Lexer<'a> {
         (number, has_decimal)
     }
 
-    fn read_string(&mut self) -> String {
+    fn read_string(&mut self, quote: char) -> String {
         let mut s = String::new();
         self.read_char(); // Consume the opening quote
         loop {
             match self.ch {
-                Some('"') | None => break,
+                Some(ch) if ch == quote => break,
+                None => break, // Unclosed string
                 Some('\\') => {
                     self.read_char();
                     match self.ch {
                         Some('n') => s.push('\n'),
                         Some('t') => s.push('\t'),
                         Some('r') => s.push('\r'),
-                        Some('"') => s.push('"'),
                         Some('\\') => s.push('\\'),
+                        Some('\'') => s.push('\''),
+                        Some('"') => s.push('"'),
                         Some(other) => {
                             s.push('\\');
                             s.push(other);
                         }
-                        None => s.push('\\'),
+                        None => s.push('\\'), // Trailing backslash
                     }
                 }
                 Some(ch) => s.push(ch),

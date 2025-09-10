@@ -3,7 +3,7 @@ use std::fmt;
 impl fmt::Display for PrefixOperator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            PrefixOperator::Bang => "!",
+            PrefixOperator::Not => "not",
             PrefixOperator::Minus => "-",
         };
         write!(f, "{}", s)
@@ -22,8 +22,8 @@ impl fmt::Display for InfixOperator {
             InfixOperator::NotEq => "!=",
             InfixOperator::Lt => "<",
             InfixOperator::Gt => ">",
-            InfixOperator::And => "&&",
-            InfixOperator::Or => "||",
+            InfixOperator::And => "and",
+            InfixOperator::Or => "or",
             InfixOperator::Assign => "=",
             InfixOperator::PlusEq => "+=",
             InfixOperator::MinusEq => "-=",
@@ -48,7 +48,7 @@ pub trait Expression: Node {}
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PrefixOperator {
     Minus, // -
-    Bang,  // !
+    Not,   // not
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,7 +74,6 @@ pub enum InfixOperator {
 // Statement Enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    Let(LetStatement),
     Return(ReturnStatement),
     Expression(ExpressionStatement),
     Break(BreakStatement),
@@ -84,7 +83,6 @@ pub enum Statement {
 impl Node for Statement {
     fn token_literal(&self) -> String {
         match self {
-            Statement::Let(s) => s.token_literal(),
             Statement::Return(s) => s.token_literal(),
             Statement::Expression(s) => s.token_literal(),
             Statement::Break(s) => s.token_literal(),
@@ -96,7 +94,6 @@ impl Node for Statement {
 impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Let(s) => write!(f, "{}", s),
             Statement::Return(s) => write!(f, "{}", s),
             Statement::Expression(s) => write!(f, "{}", s),
             Statement::Break(s) => write!(f, "{}", s),
@@ -182,31 +179,6 @@ impl Display for Program {
     }
 }
 
-// Let Statement
-#[derive(Debug, Clone, PartialEq)]
-pub struct LetStatement {
-    pub token: Token,
-    pub name: Identifier,
-    pub value: ExpressionEnum,
-}
-
-impl Node for LetStatement {
-    fn token_literal(&self) -> String {
-        self.token.literal.clone()
-    }
-}
-
-impl Display for LetStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {} = {};",
-            self.token_literal(),
-            self.name,
-            self.value
-        )
-    }
-}
 
 // Return Statement
 #[derive(Debug, Clone, PartialEq)]
@@ -295,11 +267,9 @@ impl Node for BlockStatement {
 }
 impl Display for BlockStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{{")?;
         for stmt in &self.statements {
             write!(f, "{}", stmt)?;
         }
-        write!(f, "}}")?;
         Ok(())
     }
 }

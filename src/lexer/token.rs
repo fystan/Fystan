@@ -16,7 +16,6 @@ pub enum TokenType {
     Assign,
     Plus,
     Minus,
-    Bang,
     Asterisk,
     Slash,
     Lt,
@@ -35,6 +34,8 @@ pub enum TokenType {
     Rparen,
     LBrack,
     RBrack,
+    LBrace,
+    RBrace,
     Colon,
     Dot,
 
