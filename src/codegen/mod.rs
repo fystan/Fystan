@@ -1,10 +1,10 @@
 use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
 use crate::builtins;
 use crate::parser::Parser;
-use llvm_sys::core::*; 
-use llvm_sys::prelude::*; 
-use llvm_sys::target::{LLVM_InitializeAllAsmParsers, LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs, LLVM_InitializeAllTargets};
-use llvm_sys::target_machine::{LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMRelocMode, LLVMGetTargetFromTriple, LLVMTargetMachineEmitToFile};
+use inkwell::llvm_sys::core::*; 
+use inkwell::llvm_sys::prelude::*; 
+use inkwell::llvm_sys::target::{LLVM_InitializeAllAsmParsers, LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs, LLVM_InitializeAllTargets};
+use inkwell::llvm_sys::target_machine::{LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMRelocMode, LLVMGetTargetFromTriple, LLVMTargetMachineEmitToFile};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -16,7 +16,7 @@ pub struct LoopContext {
     after_bb: LLVMBasicBlockRef,
 }
 
-use llvm_sys::LLVMLinkage;
+use inkwell::llvm_sys::LLVMLinkage;
 
 pub struct Compiler {
     context: LLVMContextRef,
@@ -197,9 +197,9 @@ impl Compiler {
                 let right = self.compile_expression(*prefix_expr.right)?;
                 unsafe {
                     match prefix_expr.operator {
-                        PrefixOperator::Bang => {
+                        PrefixOperator::Not => {
                             let zero = LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0);
-                            Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntEQ, right, zero, b"booltmp\0".as_ptr() as *const _))
+                            Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, right, zero, b"booltmp\0".as_ptr() as *const _))
                         }
                         PrefixOperator::Minus => Ok(LLVMBuildNeg(self.builder, right, b"negtmp\0".as_ptr() as *const _)),
                     }
@@ -363,7 +363,7 @@ impl Compiler {
                 let (format_str_ptr, val_to_print) = unsafe {
                     let arg_type = LLVMTypeOf(arg_val);
                     // Check if the argument is a pointer (likely a string or array struct)
-                    if LLVMGetTypeKind(arg_type) == llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
+                    if LLVMGetTypeKind(arg_type) == inkwell::llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
                         // For string/array struct, print the pointer part (i8*)
                         let struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_struct_ptr\0".as_ptr() as *const _);
                         LLVMBuildStore(self.builder, arg_val, struct_ptr);
@@ -396,7 +396,7 @@ impl Compiler {
                 
                 unsafe {
                     let arg_type = LLVMTypeOf(arg_val);
-                    if LLVMGetTypeKind(arg_type) == llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
+                    if LLVMGetTypeKind(arg_type) == inkwell::llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
                         // Load the struct, then extract the length field
                         let struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_len_struct_ptr\0".as_ptr() as *const _);
                         LLVMBuildStore(self.builder, arg_val, struct_ptr);
@@ -457,21 +457,21 @@ impl Compiler {
                 InfixOperator::Multiply => Ok(LLVMBuildMul(self.builder, left, right, b"multmp\0".as_ptr() as *const _)),
                 InfixOperator::Divide => Ok(LLVMBuildSDiv(self.builder, left, right, b"divtmp\0".as_ptr() as *const _)),
                 InfixOperator::Mod => Ok(LLVMBuildSRem(self.builder, left, right, b"remtmp\0".as_ptr() as *const _)),
-                InfixOperator::Eq => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"eqtmp\0".as_ptr() as *const _)),
-                InfixOperator::NotEq => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"neqtmp\0".as_ptr() as *const _)),
-                InfixOperator::Lt => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntSLT, left, right, b"lttmp\0".as_ptr() as *const _)),
-                InfixOperator::Gt => Ok(LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntSGT, left, right, b"gttmp\0".as_ptr() as *const _)),
+                InfixOperator::Eq => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"eqtmp\0".as_ptr() as *const _)),
+                InfixOperator::NotEq => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"neqtmp\0".as_ptr() as *const _)),
+                InfixOperator::Lt => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSLT, left, right, b"lttmp\0".as_ptr() as *const _)),
+                InfixOperator::Gt => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSGT, left, right, b"gttmp\0".as_ptr() as *const _)),
                 InfixOperator::And => {
                     let current_block = LLVMGetInsertBlock(self.builder);
                     let function = LLVMGetBasicBlockParent(current_block);
                     let rhs_bb = LLVMAppendBasicBlockInContext(self.context, function, b"and_rhs\0".as_ptr() as *const _);
                     let merge_bb = LLVMAppendBasicBlockInContext(self.context, function, b"and_merge\0".as_ptr() as *const _);
 
-                    let left_bool = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, left, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"left_bool\0".as_ptr() as *const _);
+                    let left_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"left_bool\0".as_ptr() as *const _);
                     LLVMBuildCondBr(self.builder, left_bool, rhs_bb, merge_bb);
 
                     LLVMPositionBuilderAtEnd(self.builder, rhs_bb);
-                    let right_bool = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, right, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"right_bool\0".as_ptr() as *const _);
+                    let right_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, right, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"right_bool\0".as_ptr() as *const _);
                     LLVMBuildBr(self.builder, merge_bb);
 
                     LLVMPositionBuilderAtEnd(self.builder, merge_bb);
@@ -487,11 +487,11 @@ impl Compiler {
                     let rhs_bb = LLVMAppendBasicBlockInContext(self.context, function, b"or_rhs\0".as_ptr() as *const _);
                     let merge_bb = LLVMAppendBasicBlockInContext(self.context, function, b"or_merge\0".as_ptr() as *const _);
 
-                    let left_bool = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, left, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"left_bool\0".as_ptr() as *const _);
+                    let left_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"left_bool\0".as_ptr() as *const _);
                     LLVMBuildCondBr(self.builder, left_bool, merge_bb, rhs_bb);
 
                     LLVMPositionBuilderAtEnd(self.builder, rhs_bb);
-                    let right_bool = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, right, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"right_bool\0".as_ptr() as *const _);
+                    let right_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, right, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"right_bool\0".as_ptr() as *const _);
                     LLVMBuildBr(self.builder, merge_bb);
 
                     LLVMPositionBuilderAtEnd(self.builder, merge_bb);
@@ -510,7 +510,7 @@ impl Compiler {
         unsafe {
             let cond = self.compile_expression(condition)?;
             let zero = LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0);
-            let cond_val = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, cond, zero, b"ifcond\0".as_ptr() as *const _);
+            let cond_val = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, cond, zero, b"ifcond\0".as_ptr() as *const _);
 
             let function = self.function.ok_or("If expression not in a function")?;
 
@@ -563,7 +563,7 @@ impl Compiler {
             LLVMPositionBuilderAtEnd(self.builder, cond_bb);
             let cond_val = self.compile_expression(condition)?;
             let zero = LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0);
-            let cond_bool = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntNE, cond_val, zero, b"loopcond\0".as_ptr() as *const _);
+            let cond_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, cond_val, zero, b"loopcond\0".as_ptr() as *const _);
             LLVMBuildCondBr(self.builder, cond_bool, body_bb, after_bb);
 
             // Body block
@@ -617,7 +617,7 @@ impl Compiler {
             // Condition block
             LLVMPositionBuilderAtEnd(self.builder, cond_bb);
             let index = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx\0".as_ptr() as *const _);
-            let cond = LLVMBuildICmp(self.builder, llvm_sys::LLVMIntPredicate::LLVMIntULT, index, array_len_val, b"forcond\0".as_ptr() as *const _);
+            let cond = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntULT, index, array_len_val, b"forcond\0".as_ptr() as *const _);
             LLVMBuildCondBr(self.builder, cond, body_bb, after_bb);
 
             // Body block
@@ -739,7 +739,7 @@ impl Compiler {
                 target_machine,
                 self.module,
                 filename_c.as_ptr() as *mut c_char,
-                llvm_sys::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
+                inkwell::llvm_sys::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
                 &mut error,
             ) != 0
             {

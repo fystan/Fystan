@@ -80,7 +80,7 @@ pub enum TokenType {
     Finally,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub struct Token {
     pub token_type: TokenType,
     pub literal: String,
@@ -103,7 +103,6 @@ impl Token {
 
     pub fn lookup_ident(ident: &str) -> TokenType {
         match ident {
-                    match ident {
             "let" => TokenType::Let,
             "def" => TokenType::Def,
             "True" => TokenType::True,

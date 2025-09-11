@@ -118,7 +118,7 @@ fn map_target_to_triple(target: &str) -> Option<&'static str> {
 mod tests {
     use fystan::codegen::Compiler;
     use fystan::parser::Parser;
-    use llvm_sys as llvm;
+    use inkwell::llvm_sys as llvm;
 
     fn assert_compiles_ok(fystan_code: &str) {
         unsafe {

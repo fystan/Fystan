@@ -754,7 +754,7 @@ mod tests {
         panic!("Parser errors occurred");
     }
 
-    """    #[test]
+    #[test]
     fn test_let_statements() {
         let input = "
             let x = 5
@@ -775,13 +775,13 @@ mod tests {
             if let Statement::Let(let_stmt) = stmt {
                 assert_eq!(let_stmt.name.value, expected_identifiers[i]);
             } else {
-                panic!("Statement is not a LetStatement");
+                panic!("Statement is not a LetStatement ");
             }
         }
     }
 
     #[test]
-    fn test_return_statements() {""
+    fn test_return_statements() {
         let input = "
             return 5
             return 10
@@ -814,10 +814,10 @@ mod tests {
             if let ExpressionEnum::Identifier(ident) = &expr_stmt.expression {
                 assert_eq!(ident.value, "foobar");
             } else {
-                panic!("Expression is not an Identifier");
+                panic!("Expression is not an Identifier ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -840,10 +840,10 @@ for i in my_array:
                 // More detailed check for iterable can be added
                 assert_eq!(for_expr.body.statements.len(), 1);
             } else {
-                panic!("Expression is not a ForExpression");
+                panic!("Expression is not a ForExpression ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -865,10 +865,10 @@ while x < y:
                 // We can add more detailed assertions here later
                 assert_eq!(while_expr.body.statements.len(), 1);
             } else {
-                panic!("Expression is not a WhileExpression");
+                panic!("Expression is not a WhileExpression ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -886,10 +886,10 @@ while x < y:
             if let ExpressionEnum::IntegerLiteral(lit) = &expr_stmt.expression {
                 assert_eq!(lit.value, 5);
             } else {
-                panic!("Expression is not an IntegerLiteral");
+                panic!("Expression is not an IntegerLiteral ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -913,10 +913,10 @@ while x < y:
                     assert_eq!(prefix_expr.operator, operator);
                     // You'd need a more robust way to test the right expression
                 } else {
-                    panic!("Expression is not a PrefixExpression");
+                    panic!("Expression is not a PrefixExpression ");
                 }
             } else {
-                panic!("Statement is not an ExpressionStatement");
+                panic!("Statement is not an ExpressionStatement ");
             }
         }
     }
@@ -934,7 +934,7 @@ while x < y:
             ("5 != 5", 5, InfixOperator::NotEq, 5),
         ];
 
-        for (input, left_val, op, right_val) in infix_tests {
+        for (input, _left_val, op, _right_val) in infix_tests {
             let l = Lexer::new(input);
             let mut p = Parser::new(l);
             let program = p.parse_program();
@@ -947,10 +947,10 @@ while x < y:
                     assert_eq!(infix_expr.operator, op);
                     // Again, need better testing for expressions
                 } else {
-                    panic!("Expression is not an InfixExpression");
+                    panic!("Expression is not an InfixExpression ");
                 }
             } else {
-                panic!("Statement is not an ExpressionStatement");
+                panic!("Statement is not an ExpressionStatement ");
             }
         }
     }
@@ -959,13 +959,13 @@ while x < y:
     fn test_operator_precedence_parsing() {
         let tests = vec![
             ("-a * b", "((-a) * b)"),
-            ("not -a", "(not(-a))"),
+            ("not -a ", "(not(-a))"),
             ("a + b + c", "((a + b) + c)"),
             ("a + b - c", "((a + b) - c)"),
             ("a * b * c", "((a * b) * c)"),
             ("a * b / c", "((a * b) / c)"),
             ("a + b / c", "(a + (b / c))"),
-            ("a + b * c + d / e - f", "(((a + (b * c)) + (d / e)) - f)"),
+            ("a + b * c + d / e - f ", "(((a + (b * c)) + (d / e)) - f)"),
             ("3 + 4", "(3 + 4)"),
             ("-5 * 5", "(-5 * 5)"),
             ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
@@ -973,17 +973,17 @@ while x < y:
             ("3 + 4 * 5 == 3 * 1 + 4 * 5", "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"),
             ("True", "True"),
             ("False", "False"),
-            ("3 > 5 == False", "((3 > 5) == False)"),
-            ("3 < 5 == True", "((3 < 5) == True)"),
+            ("3 > 5 == False ", "((3 > 5) == False)"),
+            ("3 < 5 == True ", "((3 < 5) == True)"),
             ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
             ("(5 + 5) * 2", "((5 + 5) * 2)"),
             ("2 / (5 + 5)", "(2 / (5 + 5))"),
             ("-(5 + 5)", "(-(5 + 5))"),
             ("not (True == True)", "(not(True == True))"),
-            ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+            ("a + add(b * c) + d ", "((a + add((b * c))) + d)"),
             ("add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))"),
             ("add(a + b + c * d / f + g)", "add((((a + b) + ((c * d) / f)) + g))"),
-            ("a * [1, 2, 3, 4][b * c] * d", "((a * ([1, 2, 3, 4][(b * c)])) * d)"),
+            ("a * [1, 2, 3, 4][b * c] * d ", "((a * ([1, 2, 3, 4][(b * c)])) * d)"),
             ("add(a * b[2], b[1], 2 * [1, 2][1])", "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))"),
         ];
 
@@ -1014,10 +1014,10 @@ if x < y:
                 // More detailed checks needed here
                 assert!(if_expr.alternative.is_none());
             } else {
-                panic!("Expression is not an IfExpression");
+                panic!("Expression is not an IfExpression ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -1040,10 +1040,10 @@ else:
             if let ExpressionEnum::If(if_expr) = &expr_stmt.expression {
                 assert!(if_expr.alternative.is_some());
             } else {
-                panic!("Expression is not an IfExpression");
+                panic!("Expression is not an IfExpression ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -1068,10 +1068,10 @@ def my_func(x, y):
                 assert_eq!(func_lit.parameters[1].value, "y");
                 assert_eq!(func_lit.body.statements.len(), 1);
             } else {
-                panic!("Expression is not a FunctionLiteral");
+                panic!("Expression is not a FunctionLiteral ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
@@ -1089,10 +1089,10 @@ def my_func(x, y):
             if let ExpressionEnum::Call(call_expr) = &expr_stmt.expression {
                 assert_eq!(call_expr.arguments.len(), 3);
             } else {
-                panic!("Expression is not a CallExpression");
+                panic!("Expression is not a CallExpression ");
             }
         } else {
-            panic!("Statement is not an ExpressionStatement");
+            panic!("Statement is not an ExpressionStatement ");
         }
     }
 
