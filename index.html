@@ -80,9 +80,115 @@
     <hr>
 
     <h2>📦 Installation</h2>
-    <a href="installers/fystan_installer.exe" class="download-button" download>
-        Download Fystan Installer
-    </a>
+    <div id="download-section">
+        <div style="margin-bottom: 10px;">
+            <select id="os-select" style="width: 100%; padding: 8px; border-radius: 4px; background: #1a1f26; color: #b8c0c9; border: 1px solid #30363d; margin-bottom: 10px;"></select>
+            <select id="arch-select" style="width: 100%; padding: 8px; border-radius: 4px; background: #1a1f26; color: #b8c0c9; border: 1px solid #30363d;"></select>
+        </div>
+        <a id="download-button" class="download-button">Download Fystan</a>
+        <p id="error-message" style="color: #ff5555; display: none; margin-top: 10px;"></p>
+    </div>
+
+    <script>
+        const osSelect = document.getElementById('os-select');
+        const archSelect = document.getElementById('arch-select');
+        const downloadButton = document.getElementById('download-button');
+        const errorMessage = document.getElementById('error-message');
+
+        const releases = {
+            windows: ['amd64', 'x86'],
+            linux: ['amd64', 'x86', 'arm', 'arm64'],
+            darwin: ['amd64', 'arm64']
+        };
+
+        function initialize() {
+            // Disable button and set placeholder text
+            downloadButton.classList.add('disabled');
+            downloadButton.textContent = 'Select OS and Architecture';
+            downloadButton.style.backgroundColor = '#555';
+
+            // OS dropdown
+            osSelect.innerHTML = '<option value="">Select OS</option>';
+            Object.keys(releases).forEach(os => {
+                const option = document.createElement('option');
+                option.value = os;
+                option.textContent = os;
+                osSelect.appendChild(option);
+            });
+
+            // Arch dropdown
+            archSelect.innerHTML = '<option value="">Select Architecture</option>';
+            archSelect.disabled = true;
+            
+            errorMessage.style.display = 'none';
+        }
+
+        function updateArchOptions() {
+            const selectedOs = osSelect.value;
+            archSelect.innerHTML = '<option value="">Select Architecture</option>';
+            if (selectedOs && releases[selectedOs]) {
+                releases[selectedOs].forEach(arch => {
+                    const option = document.createElement('option');
+                    option.value = arch;
+                    option.textContent = arch;
+                    archSelect.appendChild(option);
+                });
+                archSelect.disabled = false;
+            } else {
+                archSelect.disabled = true;
+            }
+            validateSelections();
+        }
+
+        function validateSelections() {
+            const os = osSelect.value;
+            const arch = archSelect.value;
+
+            if (os && arch) {
+                downloadButton.classList.remove('disabled');
+                downloadButton.style.backgroundColor = '#8ab4f8';
+                errorMessage.style.display = 'none';
+                updateDownloadLink();
+            } else {
+                downloadButton.classList.add('disabled');
+                downloadButton.style.backgroundColor = '#555';
+                downloadButton.textContent = 'Select OS and Architecture';
+                downloadButton.removeAttribute('href');
+                downloadButton.removeAttribute('download');
+            }
+        }
+
+        function updateDownloadLink() {
+            const os = osSelect.value;
+            const arch = archSelect.value;
+            if (os && arch) {
+                const fileName = `fystan-installer-${os}-${arch}.exe`;
+                downloadButton.href = `installers/${fileName}`;
+                downloadButton.setAttribute('download', fileName);
+                downloadButton.textContent = `Download for ${os} (${arch})`;
+            }
+        }
+
+        downloadButton.addEventListener('click', (e) => {
+            if (downloadButton.classList.contains('disabled')) {
+                e.preventDefault();
+                errorMessage.textContent = 'Please select an OS and architecture first.';
+                errorMessage.style.display = 'block';
+            }
+        });
+
+        osSelect.addEventListener('change', () => {
+            errorMessage.style.display = 'none';
+            updateArchOptions();
+        });
+        archSelect.addEventListener('change', () => {
+            errorMessage.style.display = 'none';
+            validateSelections();
+        });
+
+        // Initialize
+        initialize();
+    </script>
 
     <hr>
 
