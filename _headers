@@ -1,5 +1,12 @@
+<<<<<<< HEAD
 /downloads/*
   Content-Disposition: attachment
 
 /installers/*
+=======
+/downloads/*
+  Content-Disposition: attachment
+
+/installers/*
+>>>>>>> 7f1305a (_20:01:46.03)
   Content-Disposition: attachment
