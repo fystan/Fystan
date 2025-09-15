@@ -162,7 +162,7 @@
             const os = osSelect.value;
             const arch = archSelect.value;
             if (os && arch) {
-                const fileName = `fystan-installer-${os}-${arch}.exe`;
+                const fileName = `Fystan-Installer-${os}-${arch}.exe`;
                 downloadButton.href = `installers/${fileName}`;
                 downloadButton.setAttribute('download', fileName);
                 downloadButton.textContent = `Download for ${os} (${arch})`;
