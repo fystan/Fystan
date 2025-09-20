@@ -36,61 +36,49 @@ impl<'a> Lexer<'a> {
             return;
         }
 
-        let mut current_indent = 0;
-        while let Some(' ') = self.ch {
-            current_indent += 1;
-            self.read_char();
-        }
-        
-        // Skip comments
-        if self.ch == Some('#') {
-            while self.ch.is_some() && self.ch != Some('\n') {
+        loop {
+            let mut current_indent = 0;
+            while let Some(' ') = self.ch {
+                current_indent += 1;
                 self.read_char();
             }
-        }
 
-        if self.ch == Some('\n') || self.ch.is_none() {
-             // Empty or comment line, no indentation change
-            self.at_line_start = true;
-            self.read_char();
-            self.skip_empty_lines();
-            self.handle_indentation(); // Handle next significant line
-            return;
-        }
-
-        self.at_line_start = false;
-        let last_indent = *self.indent_stack.last().unwrap();
-
-        if current_indent > last_indent {
-            self.indent_stack.push(current_indent);
-            self.tokens.push(Token::new(TokenType::Indent, "INDENT".to_string()));
-        } else if current_indent < last_indent {
-            while let Some(&last) = self.indent_stack.last() {
-                if current_indent < last {
-                    self.indent_stack.pop();
-                    self.tokens.push(Token::new(TokenType::Dedent, "DEDENT".to_string()));
-                } else {
-                    break;
-                }
-            }
-            if *self.indent_stack.last().unwrap() != current_indent {
-                // Indentation error
-                self.tokens.push(Token::new(TokenType::Illegal, "IndentationError".to_string()));
-            }
-        }
-    }
-    
-    fn skip_empty_lines(&mut self) {
-        loop {
-            self.skip_whitespace();
             if self.ch == Some('#') {
-                 while self.ch.is_some() && self.ch != Some('\n') {
+                while self.ch.is_some() && self.ch != Some('\n') {
                     self.read_char();
                 }
-            } else if self.ch != Some('\n') {
+            }
+
+            if self.ch == Some('\n') {
+                self.read_char();
+                continue;
+            }
+
+            if self.ch.is_none() {
                 break;
             }
-            self.read_char();
+
+            self.at_line_start = false;
+            let last_indent = *self.indent_stack.last().unwrap();
+
+            if current_indent > last_indent {
+                self.indent_stack.push(current_indent);
+                self.tokens.push(Token::new(TokenType::Indent, "INDENT".to_string()));
+            } else if current_indent < last_indent {
+                while let Some(&last) = self.indent_stack.last() {
+                    if current_indent < last {
+                        self.indent_stack.pop();
+                        self.tokens.push(Token::new(TokenType::Dedent, "DEDENT".to_string()));
+                    } else {
+                        break;
+                    }
+                }
+                if *self.indent_stack.last().unwrap() != current_indent {
+                    self.tokens.push(Token::new(TokenType::Illegal, "IndentationError".to_string()));
+                }
+            }
+
+            break;
         }
     }
 
@@ -307,22 +295,8 @@ mod tests {
 
     #[test]
     fn test_simple_indentation() {
-        let input = "
-
-def main():
-    pass
-";
+        let input = "def main():\n    pass";
         let mut lexer = Lexer::new(input);
-        let tokens = vec![
-            lexer.next_token(),
-            lexer.next_token(),
-            lexer.next_token(),
-            lexer.next_token(),
-            lexer.next_token(),
-            lexer.next_token(),
-            lexer.next_token(),
-            lexer.next_token(),
-        ];
 
         let expected_tokens = vec![
             Token::new(TokenType::Def, "def".to_string()),
@@ -330,16 +304,17 @@ def main():
             Token::new(TokenType::Lparen, "(".to_string()),
             Token::new(TokenType::Rparen, ")".to_string()),
             Token::new(TokenType::Colon, ":".to_string()),
+            Token::new(TokenType::Newline, "\n".to_string()),
             Token::new(TokenType::Indent, "INDENT".to_string()),
             Token::new(TokenType::Pass, "pass".to_string()),
             Token::new(TokenType::Dedent, "DEDENT".to_string()),
+            Token::new(TokenType::Eof, "".to_string()),
         ];
-        
-        for (i, token) in tokens.iter().enumerate() {
-            if i < expected_tokens.len() {
-                assert_eq!(token.token_type, expected_tokens[i].token_type);
-                assert_eq!(token.literal, expected_tokens[i].literal);
-            }
+
+        for expected_token in expected_tokens {
+            let token = lexer.next_token();
+            assert_eq!(token.token_type, expected_token.token_type, "token type mismatch");
+            assert_eq!(token.literal, expected_token.literal, "token literal mismatch");
         }
     }
 }

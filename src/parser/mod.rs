@@ -83,6 +83,10 @@ impl<'a> Parser<'a> {
         };
 
         while !self.cur_token_is(TokenType::Eof) {
+            if self.cur_token_is(TokenType::Newline) {
+                self.next_token();
+                continue;
+            }
             if let Some(stmt) = self.parse_statement() {
                 program.statements.push(stmt);
             }
@@ -403,8 +407,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume 'if'
         let condition = self.parse_expression(Precedence::Lowest)?;
 
-        if !self.cur_token_is(TokenType::Colon) {
-            self.errors.push(format!("expected ':', got {:?}", self.cur_token.token_type));
+        if !self.expect_peek(TokenType::Colon) {
             return None;
         }
 
@@ -482,8 +485,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume 'while'
         let condition = self.parse_expression(Precedence::Lowest)?;
 
-        if !self.cur_token_is(TokenType::Colon) {
-            self.errors.push(format!("expected ':', got {:?}", self.cur_token.token_type));
+        if !self.expect_peek(TokenType::Colon) {
             return None;
         }
 
@@ -622,6 +624,10 @@ impl<'a> Parser<'a> {
         self.next_token(); // Consume Indent.
 
         while !self.cur_token_is(TokenType::Dedent) && !self.cur_token_is(TokenType::Eof) {
+            if self.cur_token_is(TokenType::Newline) {
+                self.next_token();
+                continue;
+            }
             if let Some(stmt) = self.parse_statement() {
                 statements.push(stmt);
             }
@@ -756,11 +762,7 @@ mod tests {
 
     #[test]
     fn test_let_statements() {
-        let input = "
-            let x = 5
-            let y = 10
-            let foobar = 838383
-        ";
+        let input = "let x = 5\nlet y = 10\nlet foobar = 838383";
 
         let l = Lexer::new(input);
         let mut p = Parser::new(l);
@@ -782,11 +784,7 @@ mod tests {
 
     #[test]
     fn test_return_statements() {
-        let input = "
-            return 5
-            return 10
-            return 993322
-        ";
+        let input = "return 5\nreturn 10\nreturn 993322";
 
         let l = Lexer::new(input);
         let mut p = Parser::new(l);
@@ -896,11 +894,11 @@ while x < y:
     #[test]
     fn test_parsing_prefix_expressions() {
         let prefix_tests = vec![
-            ("not 5", PrefixOperator::Not, 5),
-            ("-15", PrefixOperator::Minus, 15),
+            ("not 5", PrefixOperator::Not),
+            ("-15", PrefixOperator::Minus),
         ];
 
-        for (input, operator, value) in prefix_tests {
+        for (input, operator) in prefix_tests {
             let l = Lexer::new(input);
             let mut p = Parser::new(l);
             let program = p.parse_program();
@@ -967,19 +965,19 @@ while x < y:
             ("a + b / c", "(a + (b / c))"),
             ("a + b * c + d / e - f ", "(((a + (b * c)) + (d / e)) - f)"),
             ("3 + 4", "(3 + 4)"),
-            ("-5 * 5", "(-5 * 5)"),
+            ("-5 * 5", "((-5) * 5)"),
             ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
             ("5 < 4 != 3 > 4", "((5 < 4) != (3 > 4))"),
             ("3 + 4 * 5 == 3 * 1 + 4 * 5", "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"),
-            ("True", "True"),
-            ("False", "False"),
-            ("3 > 5 == False ", "((3 > 5) == False)"),
-            ("3 < 5 == True ", "((3 < 5) == True)"),
+            ("true", "true"),
+            ("false", "false"),
+            ("3 > 5 == false", "((3 > 5) == false)"),
+            ("3 < 5 == true", "((3 < 5) == true)"),
             ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
             ("(5 + 5) * 2", "((5 + 5) * 2)"),
             ("2 / (5 + 5)", "(2 / (5 + 5))"),
             ("-(5 + 5)", "(-(5 + 5))"),
-            ("not (True == True)", "(not(True == True))"),
+            ("not (true == true)", "(not(true == true))"),
             ("a + add(b * c) + d ", "((a + add((b * c))) + d)"),
             ("add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))"),
             ("add(a + b + c * d / f + g)", "add((((a + b) + ((c * d) / f)) + g))"),
