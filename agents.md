@@ -1,9 +1,9 @@
-# Agent (Rust)
+# Ready For Start
 
-## Before_Start_Tasks
-- Read READMD.md
+- Read README.md
 - Need Rust (latest stable)
 - Run commands
 ```bash
 sudo apt update
 sudo apt install -y llvm-18 clang
+```
