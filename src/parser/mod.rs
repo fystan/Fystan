@@ -2,7 +2,7 @@ use crate::ast::Program;
 use crate::ast::{
     ArrayLiteral, BlockStatement, Boolean, CallExpression, ExpressionEnum, ExpressionStatement,
     FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression,
-    InfixOperator, IntegerLiteral, LetStatement, PrefixExpression, PrefixOperator,
+    InfixOperator, IntegerLiteral, PrefixExpression, PrefixOperator,
     ReturnStatement, StringLiteral, Statement, WhileExpression, BreakStatement, ContinueStatement, ForExpression,
 };
 use crate::lexer::{Lexer, token::{Token, TokenType}};
@@ -97,35 +97,11 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Option<Statement> {
         match self.cur_token.token_type {
-            TokenType::Let => self.parse_let_statement().map(Statement::Let),
             TokenType::Return => self.parse_return_statement().map(Statement::Return),
             TokenType::Break => self.parse_break_statement().map(Statement::Break),
             TokenType::Continue => self.parse_continue_statement().map(Statement::Continue),
             _ => self.parse_expression_statement().map(Statement::Expression),
         }
-    }
-
-    fn parse_let_statement(&mut self) -> Option<LetStatement> {
-        let token = self.cur_token.clone();
-
-        if !self.expect_peek(TokenType::Ident) {
-            return None;
-        }
-
-        let name = Identifier {
-            token: self.cur_token.clone(),
-            value: self.cur_token.literal.clone(),
-        };
-
-        if !self.expect_peek(TokenType::Assign) {
-            return None;
-        }
-
-        self.next_token();
-
-        let value = self.parse_expression(Precedence::Lowest)?;
-
-        Some(LetStatement { token, name, value })
     }
 
     fn parse_return_statement(&mut self) -> Option<ReturnStatement> {
@@ -760,27 +736,6 @@ mod tests {
         panic!("Parser errors occurred");
     }
 
-    #[test]
-    fn test_let_statements() {
-        let input = "let x = 5\nlet y = 10\nlet foobar = 838383";
-
-        let l = Lexer::new(input);
-        let mut p = Parser::new(l);
-        let program = p.parse_program();
-        check_parser_errors(&p);
-
-        assert_eq!(program.statements.len(), 3);
-
-        let expected_identifiers = vec!["x", "y", "foobar"];
-
-        for (i, stmt) in program.statements.iter().enumerate() {
-            if let Statement::Let(let_stmt) = stmt {
-                assert_eq!(let_stmt.name.value, expected_identifiers[i]);
-            } else {
-                panic!("Statement is not a LetStatement ");
-            }
-        }
-    }
 
     #[test]
     fn test_return_statements() {
@@ -795,6 +750,37 @@ mod tests {
 
         for stmt in program.statements {
             assert!(matches!(stmt, Statement::Return(_)));
+        }
+    }
+
+    #[test]
+    fn test_assignment_statements() {
+        let input = "x = 5\ny = 10\nfoobar = 838383";
+
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 3);
+
+        let expected_identifiers = vec!["x", "y", "foobar"];
+
+        for (i, stmt) in program.statements.iter().enumerate() {
+            if let Statement::Expression(expr_stmt) = stmt {
+                if let ExpressionEnum::Infix(infix_expr) = &expr_stmt.expression {
+                    assert_eq!(infix_expr.operator, InfixOperator::Assign);
+                    if let ExpressionEnum::Identifier(ident) = &*infix_expr.left {
+                        assert_eq!(ident.value, expected_identifiers[i]);
+                    } else {
+                        panic!("Left side of assignment is not an Identifier");
+                    }
+                } else {
+                    panic!("Expression is not an InfixExpression");
+                }
+            } else {
+                panic!("Statement is not an ExpressionStatement");
+            }
         }
     }
 

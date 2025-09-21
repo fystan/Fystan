@@ -45,7 +45,6 @@ pub enum TokenType {
     Newline,
 
     // Keywords
-    Let,
     Def,
     True,
     False,
@@ -103,7 +102,6 @@ impl Token {
 
     pub fn lookup_ident(ident: &str) -> TokenType {
         match ident {
-            "let" => TokenType::Let,
             "def" => TokenType::Def,
             "True" => TokenType::True,
             "False" => TokenType::False,

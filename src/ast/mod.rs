@@ -74,7 +74,6 @@ pub enum InfixOperator {
 // Statement Enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    Let(LetStatement),
     Return(ReturnStatement),
     Expression(ExpressionStatement),
     Break(BreakStatement),
@@ -84,7 +83,6 @@ pub enum Statement {
 impl Node for Statement {
     fn token_literal(&self) -> String {
         match self {
-            Statement::Let(s) => s.token_literal(),
             Statement::Return(s) => s.token_literal(),
             Statement::Expression(s) => s.token_literal(),
             Statement::Break(s) => s.token_literal(),
@@ -96,7 +94,6 @@ impl Node for Statement {
 impl Display for Statement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Statement::Let(s) => write!(f, "{}", s),
             Statement::Return(s) => write!(f, "{}", s),
             Statement::Expression(s) => write!(f, "{}", s),
             Statement::Break(s) => write!(f, "{}", s),
@@ -182,26 +179,6 @@ impl Display for Program {
     }
 }
 
-
-// Let Statement
-#[derive(Debug, Clone, PartialEq)]
-pub struct LetStatement {
-    pub token: Token, // the 'let' token
-    pub name: Identifier,
-    pub value: ExpressionEnum,
-}
-
-impl Node for LetStatement {
-    fn token_literal(&self) -> String {
-        self.token.literal.clone()
-    }
-}
-
-impl Display for LetStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "let {} = {};", self.name, self.value)
-    }
-}
 
 // Return Statement
 #[derive(Debug, Clone, PartialEq)]
