@@ -1,6 +1,6 @@
 <h1><img src="fystan.ico" width="40" height="40" align="absmiddle"> Fystan</h1>
 
-**Fystan** is a compiled programming language that blends the intuitive syntax of **Python**, **Go**, and **JavaScript** with the raw performance of **Rust** and **C++**.  
+**Fystan** is a compiled programming language that blends the intuitive syntax of **Python** with the raw performance of **Rust** and **C++**.  
 It features **safe, efficient memory management** via **CTMM** (Compile Time Memory Management) and generates **native binaries** for multiple architectures.
 
 > ⚡ Currently in **active development** – new features are added regularly.
