@@ -149,8 +149,8 @@ mod tests {
     }
 
     #[test]
-    fn test_let_statements() {
-        assert_compiles_ok("let a = 5\nlet b = 10\nreturn a + b");
+    fn test_assignment_statements() {
+        assert_compiles_ok("a = 5\nb = 10\nreturn a + b");
     }
 
     #[test]
@@ -167,66 +167,122 @@ mod tests {
 
     #[test]
     fn test_function_declaration_and_call() {
-        let code = "def add(a, b):\n    return a + b\n\nreturn add(5, 10)";
+        let code = "
+def add(a, b):
+    return a + b
+return add(5, 10)
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_string_literal_statement() {
-        assert_compiles_ok("let a = \"hello world\"");
+        assert_compiles_ok("a = \"hello world\"");
     }
 
     #[test]
     fn test_while_loop() {
-        let code = "let i = 0\nwhile i < 10:\n    i = i + 1\n\nreturn i";
+        let code = "
+i = 0
+while i < 10:
+    i = i + 1
+return i
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_break_statement() {
-        let code = "let i = 0\nwhile i < 10:\n    if i == 5:\n        break\n    \n    i = i + 1\n\nreturn i";
+        let code = "
+i = 0
+while i < 10:
+    if i == 5:
+        break
+    i = i + 1
+return i
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_continue_statement() {
-        let code = "let i = 0\nlet j = 0\nwhile i < 10:\n    i = i + 1\n    if i % 2 == 0:\n        continue\n    \n    j = j + 1\n\nreturn j";
+        let code = "
+i = 0
+j = 0
+while i < 10:
+    i = i + 1
+    if i % 2 == 0:
+        continue
+    j = j + 1
+return j
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_for_loop() {
-        let code = "let sum = 0\nfor x in [1, 2, 3, 4, 5]:\n    sum = sum + x\n\nreturn sum";
+        let code = "
+sum = 0
+my_array = [1, 2, 3, 4, 5]
+for x in my_array:
+    sum = sum + x
+return sum
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_print_builtin() {
-        let code = "print(123)\nprint(\"hello world\")\nlet x = 42\nprint(x)";
+        let code = "
+print(123)
+print(\"hello world\")
+x = 42
+print(x)
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_len_builtin() {
-        let code = "let s = \"hello\"\nlet l1 = len(s)\nlet a = [1, 2, 3]\nlet l2 = len(a)\nreturn l1 + l2";
+        let code = "
+s = \"hello\"
+l1 = len(s)
+a = [1, 2, 3]
+l2 = len(a)
+return l1 + l2
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_array_variable_len_and_for_loop() {
-        let code = "let my_arr = [10, 20, 30]\nlet arr_len = len(my_arr)\nlet sum = 0\nfor val in my_arr:\n    sum = sum + val\n\nreturn sum + arr_len";
+        let code = "
+my_arr = [10, 20, 30]
+arr_len = len(my_arr)
+sum = 0
+for val in my_arr:
+    sum = sum + val
+return sum + arr_len
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_string_variable_len() {
-        let code = "let my_str = \"Fystan\"\nlet str_len = len(my_str)\nreturn str_len";
+        let code = "
+my_str = \"Fystan\"
+str_len = len(my_str)
+return str_len
+        ";
         assert_compiles_ok(code);
     }
 
     #[test]
     fn test_read_line_builtin() {
-        let code = "let line = read_line()\nprint(line)";
+        let code = "
+line = read_line()
+print(line)
+        ";
         assert_compiles_ok(code);
     }
 }

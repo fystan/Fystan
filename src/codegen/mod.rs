@@ -121,17 +121,6 @@ impl Compiler {
     fn compile_statement(&mut self, statement: Statement) -> Result<LLVMValueRef, String> {
         match statement {
             Statement::Expression(expr_stmt) => self.compile_expression(expr_stmt.expression),
-            Statement::Let(let_stmt) => {
-                let name = let_stmt.name.value;
-                let value = self.compile_expression(let_stmt.value)?;
-                let value_type = unsafe { LLVMTypeOf(value) };
-
-                let alloca = self.create_entry_block_alloca(&name, value_type);
-                unsafe { LLVMBuildStore(self.builder, value, alloca) };
-
-                self.variables.insert(name, alloca);
-                Ok(value)
-            }
             Statement::Return(ret_stmt) => {
                 let value = self.compile_expression(ret_stmt.return_value)?;
                 unsafe { LLVMBuildRet(self.builder, value) };
@@ -209,12 +198,16 @@ impl Compiler {
                 if infix_expr.operator == InfixOperator::Assign {
                     if let ExpressionEnum::Identifier(ident) = *infix_expr.left {
                         let value = self.compile_expression(*infix_expr.right)?;
-                        if let Some(var) = self.variables.get(&ident.value) {
-                            unsafe { LLVMBuildStore(self.builder, value, *var) };
-                            return Ok(value);
+                        let var = if let Some(var) = self.variables.get(&ident.value) {
+                            *var
                         } else {
-                            return Err(format!("Cannot assign to undeclared variable {}", ident.value));
-                        }
+                            let value_type = unsafe { LLVMTypeOf(value) };
+                            let alloca = self.create_entry_block_alloca(&ident.value, value_type);
+                            self.variables.insert(ident.value.clone(), alloca);
+                            alloca
+                        };
+                        unsafe { LLVMBuildStore(self.builder, value, var) };
+                        return Ok(value);
                     } else {
                         return Err("Destination of assignment must be an identifier".to_string());
                     }
