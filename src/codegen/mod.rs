@@ -142,6 +142,10 @@ impl Compiler {
                     Err("'continue' outside of a loop".to_string())
                 }
             }
+            Statement::Pass(_) => {
+                // Pass statement does nothing, return a dummy value
+                unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
+            }
         }
     }
 
@@ -172,6 +176,10 @@ impl Compiler {
             },
             ExpressionEnum::Boolean(b) => unsafe {
                 Ok(LLVMConstInt(LLVMInt1TypeInContext(self.context), b.value as u64, 0))
+            },
+            ExpressionEnum::None(_) => unsafe {
+                // None is represented as a null pointer
+                Ok(LLVMConstNull(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)))
             },
             ExpressionEnum::Identifier(ident) => {
                 if let Some(value) = self.variables.get(&ident.value) {
@@ -452,6 +460,8 @@ impl Compiler {
                 InfixOperator::Mod => Ok(LLVMBuildSRem(self.builder, left, right, b"remtmp\0".as_ptr() as *const _)),
                 InfixOperator::Eq => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"eqtmp\0".as_ptr() as *const _)),
                 InfixOperator::NotEq => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"neqtmp\0".as_ptr() as *const _)),
+                InfixOperator::Is => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"istmp\0".as_ptr() as *const _)),
+                InfixOperator::IsNot => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"isnottmp\0".as_ptr() as *const _)),
                 InfixOperator::Lt => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSLT, left, right, b"lttmp\0".as_ptr() as *const _)),
                 InfixOperator::Gt => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSGT, left, right, b"gttmp\0".as_ptr() as *const _)),
                 InfixOperator::And => {

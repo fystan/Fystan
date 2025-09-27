@@ -20,6 +20,8 @@ impl fmt::Display for InfixOperator {
             InfixOperator::Mod => "%",
             InfixOperator::Eq => "==",
             InfixOperator::NotEq => "!=",
+            InfixOperator::Is => "is",
+            InfixOperator::IsNot => "is not",
             InfixOperator::Lt => "<",
             InfixOperator::Gt => ">",
             InfixOperator::And => "and",
@@ -60,6 +62,8 @@ pub enum InfixOperator {
     Mod,        // %
     Eq,         // ==
     NotEq,      // !=
+    Is,         // is
+    IsNot,      // is not
     Lt,         // <
     Gt,         // >
     And,        // &&
@@ -78,6 +82,7 @@ pub enum Statement {
     Expression(ExpressionStatement),
     Break(BreakStatement),
     Continue(ContinueStatement),
+    Pass(PassStatement),
 }
 
 impl Node for Statement {
@@ -87,6 +92,7 @@ impl Node for Statement {
             Statement::Expression(s) => s.token_literal(),
             Statement::Break(s) => s.token_literal(),
             Statement::Continue(s) => s.token_literal(),
+            Statement::Pass(s) => s.token_literal(),
         }
     }
 }
@@ -98,6 +104,7 @@ impl Display for Statement {
             Statement::Expression(s) => write!(f, "{}", s),
             Statement::Break(s) => write!(f, "{}", s),
             Statement::Continue(s) => write!(f, "{}", s),
+            Statement::Pass(s) => write!(f, "{}", s),
         }
     }
 }
@@ -108,6 +115,7 @@ pub enum ExpressionEnum {
     FloatLiteral(FloatLiteral),
     StringLiteral(StringLiteral),
     Boolean(Boolean),
+    None(NoneLiteral),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
     If(IfExpression),
@@ -128,6 +136,7 @@ impl Display for ExpressionEnum {
             ExpressionEnum::FloatLiteral(e) => write!(f, "{}", e),
             ExpressionEnum::StringLiteral(e) => write!(f, "{}", e),
             ExpressionEnum::Boolean(e) => write!(f, "{}", e),
+            ExpressionEnum::None(e) => write!(f, "{}", e),
             ExpressionEnum::Prefix(e) => write!(f, "{}", e),
             ExpressionEnum::Infix(e) => write!(f, "{}", e),
             ExpressionEnum::If(e) => write!(f, "{}", e),
@@ -150,6 +159,7 @@ impl Node for ExpressionEnum {
             ExpressionEnum::FloatLiteral(e) => e.token_literal(),
             ExpressionEnum::StringLiteral(e) => e.token_literal(),
             ExpressionEnum::Boolean(e) => e.token_literal(),
+            ExpressionEnum::None(e) => e.token_literal(),
             ExpressionEnum::Prefix(e) => e.token_literal(),
             ExpressionEnum::Infix(e) => e.token_literal(),
             ExpressionEnum::If(e) => e.token_literal(),
@@ -195,7 +205,7 @@ impl Node for ReturnStatement {
 
 impl Display for ReturnStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {};", self.token_literal(), self.return_value)
+        write!(f, "{} {}", self.token_literal(), self.return_value)
     }
 }
 
@@ -213,7 +223,7 @@ impl Node for BreakStatement {
 
 impl Display for BreakStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{};", self.token_literal())
+        write!(f, "{}", self.token_literal())
     }
 }
 
@@ -231,7 +241,7 @@ impl Node for ContinueStatement {
 
 impl Display for ContinueStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{};", self.token_literal())
+        write!(f, "{}", self.token_literal())
     }
 }
 
@@ -596,5 +606,41 @@ impl Display for HashLiteral {
             .map(|(k, v)| format!("{}: {}", k, v))
             .collect();
         write!(f, "{{{}}}", pairs.join(", "))
+    }
+}
+
+// None 리터럴
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NoneLiteral {
+    pub token: Token,
+}
+
+impl Node for NoneLiteral {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+impl Expression for NoneLiteral {}
+impl Display for NoneLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "None")
+    }
+}
+
+// Pass Statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct PassStatement {
+    pub token: Token,
+}
+
+impl Node for PassStatement {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Display for PassStatement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "pass")
     }
 }

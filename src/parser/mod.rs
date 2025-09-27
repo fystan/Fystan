@@ -4,6 +4,7 @@ use crate::ast::{
     FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression,
     InfixOperator, IntegerLiteral, PrefixExpression, PrefixOperator,
     ReturnStatement, StringLiteral, Statement, WhileExpression, BreakStatement, ContinueStatement, ForExpression,
+    NoneLiteral, PassStatement,
 };
 use crate::lexer::{Lexer, token::{Token, TokenType}};
 use std::collections::HashMap;
@@ -29,6 +30,8 @@ lazy_static! {
         let mut map = HashMap::new();
         map.insert(TokenType::Eq, Precedence::Equals);
         map.insert(TokenType::NotEq, Precedence::Equals);
+        map.insert(TokenType::Is, Precedence::Equals);
+        map.insert(TokenType::IsNot, Precedence::Equals);
         map.insert(TokenType::Lt, Precedence::LessGreater);
         map.insert(TokenType::Gt, Precedence::LessGreater);
         map.insert(TokenType::Plus, Precedence::Sum);
@@ -100,6 +103,7 @@ impl<'a> Parser<'a> {
             TokenType::Return => self.parse_return_statement().map(Statement::Return),
             TokenType::Break => self.parse_break_statement().map(Statement::Break),
             TokenType::Continue => self.parse_continue_statement().map(Statement::Continue),
+            TokenType::Pass => self.parse_pass_statement().map(Statement::Pass),
             _ => self.parse_expression_statement().map(Statement::Expression),
         }
     }
@@ -127,6 +131,11 @@ impl<'a> Parser<'a> {
         Some(ContinueStatement { token })
     }
 
+    fn parse_pass_statement(&mut self) -> Option<PassStatement> {
+        let token = self.cur_token.clone();
+        Some(PassStatement { token })
+    }
+
     fn parse_expression_statement(&mut self) -> Option<ExpressionStatement> {
         let token = self.cur_token.clone();
         let expression = self.parse_expression(Precedence::Lowest)?;
@@ -146,6 +155,8 @@ impl<'a> Parser<'a> {
                 | TokenType::Mod
                 | TokenType::Eq
                 | TokenType::NotEq
+                | TokenType::Is
+                | TokenType::IsNot
                 | TokenType::Lt
                 | TokenType::Gt
                 | TokenType::And
@@ -182,6 +193,7 @@ impl<'a> Parser<'a> {
             TokenType::Minus => self.parse_prefix_expression(PrefixOperator::Minus),
             TokenType::True => self.parse_boolean(true),
             TokenType::False => self.parse_boolean(false),
+            TokenType::None => self.parse_none_literal(),
             TokenType::Lparen => self.parse_grouped_expression(),
             TokenType::If => self.parse_if_expression(),
             TokenType::While => self.parse_while_expression(),
@@ -243,6 +255,18 @@ impl<'a> Parser<'a> {
                 token: Token::new(TokenType::NotEq, "!=".to_string()),
                 left: Box::new(left),
                 operator: InfixOperator::NotEq,
+                right: Box::new(right),
+            })),
+            TokenType::Is => Some(ExpressionEnum::Infix(InfixExpression {
+                token: Token::new(TokenType::Is, "is".to_string()),
+                left: Box::new(left),
+                operator: InfixOperator::Is,
+                right: Box::new(right),
+            })),
+            TokenType::IsNot => Some(ExpressionEnum::Infix(InfixExpression {
+                token: Token::new(TokenType::IsNot, "is not".to_string()),
+                left: Box::new(left),
+                operator: InfixOperator::IsNot,
                 right: Box::new(right),
             })),
             TokenType::Lt => Some(ExpressionEnum::Infix(InfixExpression {
@@ -351,6 +375,12 @@ impl<'a> Parser<'a> {
         Some(ExpressionEnum::Boolean(Boolean {
             token: self.cur_token.clone(),
             value,
+        }))
+    }
+
+    fn parse_none_literal(&mut self) -> Option<ExpressionEnum> {
+        Some(ExpressionEnum::None(NoneLiteral {
+            token: self.cur_token.clone(),
         }))
     }
 

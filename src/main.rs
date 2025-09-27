@@ -232,6 +232,33 @@ return sum
     }
 
     #[test]
+    fn test_python_none_literal() {
+        assert_compiles_ok("return None");
+    }
+
+    #[test]
+    fn test_python_pass_statement() {
+        let code = "
+def empty_function():
+    pass
+return 42
+        ";
+        assert_compiles_ok(code);
+    }
+
+    #[test]
+    fn test_python_none_comparison() {
+        let code = "
+x = None
+if x is None:
+    return True
+else:
+    return False
+        ";
+        assert_compiles_ok(code);
+    }
+
+    #[test]
     fn test_print_builtin() {
         let code = "
 print(123)
