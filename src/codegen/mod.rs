@@ -22,6 +22,7 @@ pub struct Compiler {
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
+    alloca_builder: LLVMBuilderRef,
     variables: HashMap<String, LLVMValueRef>,
     function: Option<LLVMValueRef>,
     loop_contexts: Vec<LoopContext>,
@@ -39,6 +40,7 @@ impl Compiler {
         unsafe {
             let module = LLVMModuleCreateWithNameInContext(b"fystan_module\0".as_ptr() as *const _, context);
             let builder = LLVMCreateBuilderInContext(context);
+            let alloca_builder = LLVMCreateBuilderInContext(context);
 
             let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
             let i32_type = LLVMInt32TypeInContext(context);
@@ -65,6 +67,7 @@ impl Compiler {
                 context,
                 module,
                 builder,
+                alloca_builder,
                 variables: HashMap::new(),
                 function: None,
                 loop_contexts: Vec::new(),
@@ -281,12 +284,8 @@ impl Compiler {
                 let array_val = self.compile_expression(*idx_expr.left)?;
                 let mut index_val = self.compile_expression(*idx_expr.index)?;
 
-                // Assuming array_val is a { i64*, i64 } struct
-                let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_array_struct_ptr\0".as_ptr() as *const _);
-                LLVMBuildStore(self.builder, array_val, array_struct_ptr);
-
-                let elements_ptr_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"elements_ptr_ptr\0".as_ptr() as *const _);
-                let elements_ptr = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt64TypeInContext(self.context), 0), elements_ptr_ptr, b"elements_ptr\0".as_ptr() as *const _);
+                // Directly extract the pointer to the elements from the struct value
+                let elements_ptr = LLVMBuildExtractValue(self.builder, array_val, 0, b"elements_ptr\0".as_ptr() as *const _);
 
                 let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_val, 1, b"indexed_element_ptr\0".as_ptr() as *const _);
                 Ok(LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), element_ptr, b"indexed_element\0".as_ptr() as *const _))
@@ -366,10 +365,7 @@ impl Compiler {
                     // Check if the argument is a pointer (likely a string or array struct)
                     if LLVMGetTypeKind(arg_type) == inkwell::llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
                         // For string/array struct, print the pointer part (i8*)
-                        let struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_struct_ptr\0".as_ptr() as *const _);
-                        LLVMBuildStore(self.builder, arg_val, struct_ptr);
-                        let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
-                        let loaded_ptr = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt64TypeInContext(self.context), 0), ptr_field, b"loaded_ptr\0".as_ptr() as *const _);
+                        let loaded_ptr = LLVMBuildExtractValue(self.builder, arg_val, 0, b"ptr_field\0".as_ptr() as *const _);
                         
                         // Cast i64* to i8* for %s format
                         let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
@@ -398,11 +394,8 @@ impl Compiler {
                 unsafe {
                     let arg_type = LLVMTypeOf(arg_val);
                     if LLVMGetTypeKind(arg_type) == inkwell::llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
-                        // Load the struct, then extract the length field
-                        let struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_len_struct_ptr\0".as_ptr() as *const _);
-                        LLVMBuildStore(self.builder, arg_val, struct_ptr);
-                        let len_field_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, struct_ptr, 1, b"len_field_ptr\0".as_ptr() as *const _);
-                        Ok(LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), len_field_ptr, b"loaded_len\0".as_ptr() as *const _))
+                        // Directly extract the length field from the struct value
+                        Ok(LLVMBuildExtractValue(self.builder, arg_val, 1, b"len_val\0".as_ptr() as *const _))
                     } else {
                         Err("len() argument must be a string or an array".to_string())
                     }
@@ -592,14 +585,9 @@ impl Compiler {
             // Get the array struct (pointer to elements, length)
             let array_struct_val = self.compile_expression(iterable_expr)?;
 
-            let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"temp_for_array_struct_ptr\0".as_ptr() as *const _);
-            LLVMBuildStore(self.builder, array_struct_val, array_struct_ptr);
-
-            let elements_ptr_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"elements_ptr_ptr\0".as_ptr() as *const _);
-            let elements_ptr = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt64TypeInContext(self.context), 0), elements_ptr_ptr, b"elements_ptr\0".as_ptr() as *const _);
-
-            let len_ptr = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_ptr\0".as_ptr() as *const _);
-            let array_len_val = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), len_ptr, b"array_len_val\0".as_ptr() as *const _);
+            // Directly extract elements pointer and length from the struct value
+            let elements_ptr = LLVMBuildExtractValue(self.builder, array_struct_val, 0, b"elements_ptr\0".as_ptr() as *const _);
+            let array_len_val = LLVMBuildExtractValue(self.builder, array_struct_val, 1, b"array_len_val\0".as_ptr() as *const _);
 
             // Create index variable
             let i64_type = LLVMInt64TypeInContext(self.context);
@@ -664,20 +652,17 @@ impl Compiler {
     fn create_entry_block_alloca(&mut self, name: &str, ty: LLVMTypeRef) -> LLVMValueRef {
         unsafe {
             let function = self.function.unwrap();
-            let builder = LLVMCreateBuilderInContext(self.context);
             let entry = LLVMGetEntryBasicBlock(function);
             let first_instruction = LLVMGetFirstInstruction(entry);
 
             if first_instruction.is_null() {
-                LLVMPositionBuilderAtEnd(builder, entry);
+                LLVMPositionBuilderAtEnd(self.alloca_builder, entry);
             } else {
-                LLVMPositionBuilderBefore(builder, first_instruction);
+                LLVMPositionBuilderBefore(self.alloca_builder, first_instruction);
             }
 
             let c_name = CString::new(name).unwrap();
-            let alloca = LLVMBuildAlloca(builder, ty, c_name.as_ptr());
-            LLVMDisposeBuilder(builder);
-            alloca
+            LLVMBuildAlloca(self.alloca_builder, ty, c_name.as_ptr())
         }
     }
     

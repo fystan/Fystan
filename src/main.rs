@@ -3,7 +3,6 @@ use fystan::codegen::Compiler;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::Builder;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -52,9 +51,8 @@ fn main() {
                 path.with_extension("")
             });
 
-            // 2. Create a temporary directory for the .o file
-            let tmp_dir = Builder::new().prefix("fystan").tempdir().unwrap();
-            let obj_path = tmp_dir.path().join("output.o");
+            // 2. Determine output path for the object file
+            let obj_path = output_path.with_extension("o");
 
             // 3. Get the target triple
             let target_triple = match map_target_to_triple(&args.target) {
@@ -65,18 +63,24 @@ fn main() {
                 }
             };
 
-            // 4. Compile to object file in the temporary directory
-            if let Err(e) = Compiler::run_from_source(&source_code, target_triple, obj_path.to_str().unwrap()) {
+            // 4. Compile to object file
+            if let Err(e) =
+                Compiler::run_from_source(&source_code, target_triple, obj_path.to_str().unwrap())
+            {
                 eprintln!("Compilation Error: {}", e);
+                let _ = fs::remove_file(&obj_path); // Clean up on failure
                 std::process::exit(1);
             }
 
             // 5. Link the object file into an executable
             let linker_output = Command::new("clang")
-                .arg(obj_path)
+                .arg(&obj_path)
                 .arg("-o")
                 .arg(&output_path)
                 .output();
+
+            // 6. Clean up the object file
+            let _ = fs::remove_file(&obj_path);
 
             match linker_output {
                 Ok(output) => {
@@ -87,7 +91,10 @@ fn main() {
                         );
                         std::process::exit(1);
                     }
-                    println!("Build successful! Executable written to {}", output_path.to_str().unwrap());
+                    println!(
+                        "Build successful! Executable written to {}",
+                        output_path.to_str().unwrap()
+                    );
                 }
                 Err(e) => {
                     eprintln!("Failed to run linker: {}", e);
