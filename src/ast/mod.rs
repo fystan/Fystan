@@ -83,6 +83,7 @@ pub enum Statement {
     Break(BreakStatement),
     Continue(ContinueStatement),
     Pass(PassStatement),
+    Try(TryStatement),
 }
 
 impl Node for Statement {
@@ -93,6 +94,7 @@ impl Node for Statement {
             Statement::Break(s) => s.token_literal(),
             Statement::Continue(s) => s.token_literal(),
             Statement::Pass(s) => s.token_literal(),
+            Statement::Try(s) => s.token_literal(),
         }
     }
 }
@@ -105,6 +107,7 @@ impl Display for Statement {
             Statement::Break(s) => write!(f, "{}", s),
             Statement::Continue(s) => write!(f, "{}", s),
             Statement::Pass(s) => write!(f, "{}", s),
+            Statement::Try(s) => write!(f, "{}", s),
         }
     }
 }
@@ -642,5 +645,58 @@ impl Node for PassStatement {
 impl Display for PassStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "pass")
+    }
+}
+
+// Try Statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct TryStatement {
+    pub token: Token,
+    pub body: BlockStatement,
+    pub except_clauses: Vec<ExceptClause>,
+    pub else_block: Option<BlockStatement>,
+    pub finally_block: Option<BlockStatement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExceptClause {
+    pub token: Token,
+    pub exception_type: Option<ExpressionEnum>,
+    pub exception_name: Option<String>,
+    pub body: BlockStatement,
+}
+
+impl Node for TryStatement {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Display for TryStatement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "try {{ {} }}", self.body)?;
+        for except in &self.except_clauses {
+            write!(f, " {}", except)?;
+        }
+        if let Some(ref else_block) = self.else_block {
+            write!(f, " else {{ {} }}", else_block)?;
+        }
+        if let Some(ref finally_block) = self.finally_block {
+            write!(f, " finally {{ {} }}", finally_block)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for ExceptClause {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "except")?;
+        if let Some(ref exc_type) = self.exception_type {
+            write!(f, " {}", exc_type)?;
+            if let Some(ref exc_name) = self.exception_name {
+                write!(f, " as {}", exc_name)?;
+            }
+        }
+        write!(f, " {{ {} }}", self.body)
     }
 }

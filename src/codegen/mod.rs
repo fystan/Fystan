@@ -149,6 +149,27 @@ impl Compiler {
                 // Pass statement does nothing, return a dummy value
                 unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
             }
+            Statement::Try(try_stmt) => {
+                // Basic try implementation - in a real Python implementation, we would need to properly implement exception handling.
+                // For now we'll just execute the try block and ignore exception handling.
+                self.compile_block_statement(try_stmt.body)?;
+                
+                for _except_clause in try_stmt.except_clauses {
+                    // In a real implementation, we'd have more sophisticated exception handling.
+                    // For now, we simply return Ok from the try statement.
+                    // This is a simplification to make the structure work.
+                }
+                
+                if let Some(else_block) = try_stmt.else_block {
+                    self.compile_block_statement(else_block)?;
+                }
+                
+                if let Some(finally_block) = try_stmt.finally_block {
+                    self.compile_block_statement(finally_block)?;
+                }
+                
+                unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
+            }
         }
     }
 
@@ -434,6 +455,116 @@ impl Compiler {
                     LLVMBuildStore(self.builder, string_len, len_field);
 
                     Ok(LLVMBuildLoad2(self.builder, self.array_type, string_struct_ptr, b".loaded_read_line_struct\0".as_ptr() as *const _))
+                }
+            }
+            "range" => {
+                if args_expr.is_empty() || args_expr.len() > 3 {
+                    return Err("range() takes 1 to 3 arguments".to_string());
+                }
+                
+                // For now, we'll just return a simple array for the range
+                unsafe {
+                    // Process range arguments
+                    let _start_val = if args_expr.len() >= 2 {
+                        self.compile_expression(args_expr[0].clone())?
+                    } else {
+                        LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)
+                    };
+                    
+                    let stop_val = if args_expr.len() >= 2 {
+                        self.compile_expression(args_expr[1].clone())?
+                    } else {
+                        self.compile_expression(args_expr[0].clone())?
+                    };
+                    
+                    let _step_val = if args_expr.len() == 3 {
+                        self.compile_expression(args_expr[2].clone())?
+                    } else {
+                        LLVMConstInt(LLVMInt64TypeInContext(self.context), 1, 0)
+                    };
+                    
+                    // For simplicity in this implementation, we'll create an array with the bounds info
+                    // A full range implementation would generate actual arrays or iterators
+                    let range_info_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"range_info_struct_ptr\0".as_ptr() as *const _);
+                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, range_info_struct_ptr, 0, b".range_ptr_field\0".as_ptr() as *const _);
+                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, range_info_struct_ptr, 1, b".range_len_field\0".as_ptr() as *const _);
+                    
+                    // For now, just store the stop value in the "length" field as a placeholder
+                    LLVMBuildStore(self.builder, stop_val, len_field);
+                    LLVMBuildStore(self.builder, LLVMConstNull(LLVMPointerType(LLVMInt64TypeInContext(self.context), 0)), ptr_field);
+                    
+                    Ok(LLVMBuildLoad2(self.builder, self.array_type, range_info_struct_ptr, b".loaded_range_struct\0".as_ptr() as *const _))
+                }
+            }
+            "str" => {
+                if args_expr.len() != 1 {
+                    return Err("str() takes exactly one argument".to_string());
+                }
+                // For now, just return the argument as is
+                self.compile_expression(args_expr[0].clone())
+            }
+            "int" => {
+                if args_expr.len() != 1 {
+                    return Err("int() takes exactly one argument".to_string());
+                }
+                // For now, just return the argument as is (assumes integer conversion is handled elsewhere)
+                self.compile_expression(args_expr[0].clone())
+            }
+            "bool" => {
+                if args_expr.len() != 1 {
+                    return Err("bool() takes exactly one argument".to_string());
+                }
+                // For now, just return the argument as is (assumes boolean conversion is handled elsewhere)
+                self.compile_expression(args_expr[0].clone())
+            }
+            "float" => {
+                if args_expr.len() != 1 {
+                    return Err("float() takes exactly one argument".to_string());
+                }
+                // For now, just return the argument as is (assumes float conversion is handled elsewhere)
+                self.compile_expression(args_expr[0].clone())
+            }
+            "list" => {
+                if args_expr.len() > 1 {
+                    return Err("list() takes 0 or 1 arguments".to_string());
+                }
+                
+                // Create an empty list/array
+                unsafe {
+                    let i64_type = LLVMInt64TypeInContext(self.context);
+                    let array_len_val = LLVMConstInt(i64_type, 0, 0); // Empty list
+
+                    // Create the array struct { i64*, i64 }
+                    let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"empty_list_struct_ptr\0".as_ptr() as *const _);
+                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
+                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
+
+                    LLVMBuildStore(self.builder, LLVMConstNull(LLVMPointerType(i64_type, 0)), ptr_field);
+                    LLVMBuildStore(self.builder, array_len_val, len_field);
+
+                    Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_empty_list_struct\0".as_ptr() as *const _))
+                }
+            }
+            "tuple" => {
+                if args_expr.len() > 1 {
+                    return Err("tuple() takes 0 or 1 arguments".to_string());
+                }
+                
+                // For now, treat tuples the same as lists
+                // Create an empty list/array as tuple placeholder
+                unsafe {
+                    let i64_type = LLVMInt64TypeInContext(self.context);
+                    let array_len_val = LLVMConstInt(i64_type, 0, 0); // Empty tuple
+
+                    // Create the array struct { i64*, i64 }
+                    let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"empty_tuple_struct_ptr\0".as_ptr() as *const _);
+                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
+                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
+
+                    LLVMBuildStore(self.builder, LLVMConstNull(LLVMPointerType(i64_type, 0)), ptr_field);
+                    LLVMBuildStore(self.builder, array_len_val, len_field);
+
+                    Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_empty_tuple_struct\0".as_ptr() as *const _))
                 }
             }
             _ => Err(format!("Unknown builtin function: {}", builtin.name))

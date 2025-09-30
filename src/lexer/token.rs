@@ -53,6 +53,7 @@ pub enum TokenType {
     None,
     If,
     Else,
+    Elif,
     Return,
     While,
     Break,
@@ -79,6 +80,7 @@ pub enum TokenType {
     Try,
     Except,
     Finally,
+    Raise,
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
@@ -110,6 +112,7 @@ impl Token {
             "None" => TokenType::None,
             "if" => TokenType::If,
             "else" => TokenType::Else,
+            "elif" => TokenType::Elif,
             "return" => TokenType::Return,
             "while" => TokenType::While,
             "break" => TokenType::Break,
@@ -125,6 +128,7 @@ impl Token {
             "as" => TokenType::As,
             "pass" => TokenType::Pass,
             "is" => TokenType::Is,
+            "is not" => TokenType::IsNot,
             "del" => TokenType::Del,
             "global" => TokenType::Global,
             "nonlocal" => TokenType::Nonlocal,
@@ -137,6 +141,7 @@ impl Token {
             "try" => TokenType::Try,
             "except" => TokenType::Except,
             "finally" => TokenType::Finally,
+            "raise" => TokenType::Raise,
             _ => TokenType::Ident,
         }
     }

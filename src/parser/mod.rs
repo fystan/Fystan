@@ -4,7 +4,7 @@ use crate::ast::{
     FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression,
     InfixOperator, IntegerLiteral, PrefixExpression, PrefixOperator,
     ReturnStatement, StringLiteral, Statement, WhileExpression, BreakStatement, ContinueStatement, ForExpression,
-    NoneLiteral, PassStatement,
+    NoneLiteral, PassStatement, TryStatement, ExceptClause,
 };
 use crate::lexer::{Lexer, token::{Token, TokenType}};
 use std::collections::HashMap;
@@ -104,6 +104,7 @@ impl<'a> Parser<'a> {
             TokenType::Break => self.parse_break_statement().map(Statement::Break),
             TokenType::Continue => self.parse_continue_statement().map(Statement::Continue),
             TokenType::Pass => self.parse_pass_statement().map(Statement::Pass),
+            TokenType::Try => self.parse_try_statement().map(Statement::Try),
             _ => self.parse_expression_statement().map(Statement::Expression),
         }
     }
@@ -134,6 +135,126 @@ impl<'a> Parser<'a> {
     fn parse_pass_statement(&mut self) -> Option<PassStatement> {
         let token = self.cur_token.clone();
         Some(PassStatement { token })
+    }
+
+    fn parse_try_statement(&mut self) -> Option<TryStatement> {
+        let token = self.cur_token.clone(); // 'try' token
+
+        // Expect colon after 'try'
+        if !self.expect_peek(TokenType::Colon) {
+            return None;
+        }
+
+        // Expect newline and indent for the try block
+        if !self.expect_peek(TokenType::Newline) { return None; }
+        if !self.expect_peek(TokenType::Indent) { return None; }
+
+        let body = self.parse_indented_block_statement()?;
+
+        // After the try block, consume the Dedent
+        if self.peek_token_is(&TokenType::Dedent) {
+            self.next_token(); // consume the Dedent that ends the try block
+        }
+
+        let mut except_clauses = Vec::new();
+        // Parse except clauses if present
+        while self.peek_token_is(&TokenType::Except) {
+            self.next_token(); // consume Except
+            let except_clause = self.parse_except_clause()?;
+            except_clauses.push(except_clause);
+
+            // After each except block, consume the Dedent
+            if self.peek_token_is(&TokenType::Dedent) {
+                self.next_token(); // consume the Dedent that ends the except block
+            }
+        }
+
+        // Optionally parse else clause
+        let mut else_block = None;
+        if self.peek_token_is(&TokenType::Else) {
+            self.next_token(); // consume Else
+            if !self.cur_token_is(TokenType::Colon) {
+                self.errors.push(format!("expected ':', got {:?}", self.cur_token.token_type));
+                return None;
+            }
+
+            if !self.expect_peek(TokenType::Newline) { return None; }
+            if !self.expect_peek(TokenType::Indent) { return None; }
+
+            else_block = Some(self.parse_indented_block_statement()?);
+            
+            // Consume the Dedent after else block if present
+            if self.peek_token_is(&TokenType::Dedent) {
+                self.next_token(); // consume the Dedent that ends the else block
+            }
+        }
+
+        // Optionally parse finally clause  
+        let mut finally_block = None;
+        if self.peek_token_is(&TokenType::Finally) {
+            self.next_token(); // consume Finally
+            if !self.cur_token_is(TokenType::Colon) {
+                self.errors.push(format!("expected ':', got {:?}", self.cur_token.token_type));
+                return None;
+            }
+
+            if !self.expect_peek(TokenType::Newline) { return None; }
+            if !self.expect_peek(TokenType::Indent) { return None; }
+
+            finally_block = Some(self.parse_indented_block_statement()?);
+        }
+
+        Some(TryStatement {
+            token,
+            body,
+            except_clauses,
+            else_block,
+            finally_block,
+        })
+    }
+
+    fn parse_except_clause(&mut self) -> Option<ExceptClause> {
+        let token = self.cur_token.clone(); // 'except' token
+
+        // Check if there's an exception type specified
+        let mut exception_type = None;
+        let mut exception_name = None;
+
+        // If next token is not colon, it might be an exception type
+        if !self.peek_token_is(&TokenType::Colon) && 
+           !self.peek_token_is(&TokenType::Newline) {
+            self.next_token(); // consume the exception type token
+            exception_type = self.parse_expression(Precedence::Lowest);
+
+            // Check for 'as' clause to catch the exception with a name
+            if self.peek_token_is(&TokenType::As) {
+                self.next_token(); // consume 'as'
+                self.next_token(); // consume the identifier after 'as'
+                
+                if self.cur_token.token_type == TokenType::Ident {
+                    exception_name = Some(self.cur_token.literal.clone());
+                } else {
+                    self.errors.push(format!("expected identifier after 'as', got {:?}", self.cur_token.token_type));
+                    return None;
+                }
+            }
+        }
+
+        if !self.expect_peek(TokenType::Colon) {
+            return None;
+        }
+
+        if !self.expect_peek(TokenType::Newline) { return None; }
+        if !self.expect_peek(TokenType::Indent) { return None; }
+
+        let body = self.parse_indented_block_statement()?;
+
+        Some(ExceptClause {
+            token,
+            exception_type,
+            exception_name,
+            body,
+        })
     }
 
     fn parse_expression_statement(&mut self) -> Option<ExpressionStatement> {
@@ -422,9 +543,11 @@ impl<'a> Parser<'a> {
 
         let consequence = self.parse_indented_block_statement()?;
 
-        let mut alternative = None;
-        if self.peek_token_is(&TokenType::Else) {
-            self.next_token(); // consume Dedent
+        // Check for else
+        // NOTE: We don't consume the dedent that ends the consequence block here
+        // because parse_indented_block_statement() may handle it internally
+        // or the calling context may handle it
+        let alternative = if self.peek_token_is(&TokenType::Else) {
             self.next_token(); // consume Else
 
             if !self.cur_token_is(TokenType::Colon) {
@@ -435,8 +558,10 @@ impl<'a> Parser<'a> {
             if !self.expect_peek(TokenType::Newline) { return None; }
             if !self.expect_peek(TokenType::Indent) { return None; }
 
-            alternative = self.parse_indented_block_statement();
-        }
+            Some(self.parse_indented_block_statement()?)
+        } else {
+            None
+        };
 
         Some(ExpressionEnum::If(IfExpression {
             token,
