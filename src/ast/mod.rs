@@ -177,6 +177,29 @@ impl Node for ExpressionEnum {
     }
 }
 
+impl ExpressionEnum {
+    pub fn token(&self) -> Token {
+        match self {
+            ExpressionEnum::Identifier(e) => e.token.clone(),
+            ExpressionEnum::IntegerLiteral(e) => e.token.clone(),
+            ExpressionEnum::FloatLiteral(e) => e.token.clone(),
+            ExpressionEnum::StringLiteral(e) => e.token.clone(),
+            ExpressionEnum::Boolean(e) => e.token.clone(),
+            ExpressionEnum::None(e) => e.token.clone(),
+            ExpressionEnum::Prefix(e) => e.token.clone(),
+            ExpressionEnum::Infix(e) => e.token.clone(),
+            ExpressionEnum::If(e) => e.token.clone(),
+            ExpressionEnum::Function(e) => e.token.clone(),
+            ExpressionEnum::Call(e) => e.token.clone(),
+            ExpressionEnum::ArrayLiteral(e) => e.token.clone(),
+            ExpressionEnum::IndexExpression(e) => e.token.clone(),
+            ExpressionEnum::HashLiteral(e) => e.token.clone(),
+            ExpressionEnum::While(e) => e.token.clone(),
+            ExpressionEnum::For(e) => e.token.clone(),
+        }
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Program {

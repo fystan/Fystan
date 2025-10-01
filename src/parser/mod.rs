@@ -1,4 +1,4 @@
-use crate::ast::{Node, Program};
+use crate::ast::{Program};
 use crate::ast::{
     ArrayLiteral, BlockStatement, Boolean, CallExpression, ExpressionEnum, ExpressionStatement,
     FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression,
@@ -509,7 +509,7 @@ impl<'a> Parser<'a> {
             
             let elif_expr = self.parse_if_expression()?;
             let expr_stmt = ExpressionStatement {
-                token: elif_expr.token_literal(),
+                token: elif_expr.token(),
                 expression: elif_expr,
             };
 
@@ -520,7 +520,6 @@ impl<'a> Parser<'a> {
             alternative = Some(block_stmt);
         } else if self.peek_token_is(&TokenType::Else) {
             self.next_token(); // Consume Dedent
-            self.next_token(); // Consume Else
 
             if !self.expect_peek(TokenType::Colon) { return None; }
             if !self.expect_peek(TokenType::Newline) { return None; }

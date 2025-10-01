@@ -1,0 +1,6 @@
+my_list = [0, 1, 0, 2, 0, 3]
+sum = 0
+for number in my_list:
+    if number: # Test the "truthiness"
+        sum = sum + 1
+print(sum)

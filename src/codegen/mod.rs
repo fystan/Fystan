@@ -311,8 +311,9 @@ impl Compiler {
                 let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_val, 1, b"indexed_element_ptr\0".as_ptr() as *const _);
                 Ok(LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), element_ptr, b"indexed_element\0".as_ptr() as *const _))
             },
-            ExpressionEnum::Function(func_lit) => self.compile_function(func_lit),
-            _ => Err(format!("Expression not yet implemented: {:?}", expression)),
+             ExpressionEnum::Function(func_lit) => self.compile_function(func_lit),
+             ExpressionEnum::HashLiteral(hash_lit) => self.compile_hash_literal(hash_lit),
+             _ => Err(format!("Expression not yet implemented: {:?}", expression)),
         }
     }
 
@@ -457,44 +458,78 @@ impl Compiler {
                     Ok(LLVMBuildLoad2(self.builder, self.array_type, string_struct_ptr, b".loaded_read_line_struct\0".as_ptr() as *const _))
                 }
             }
-            "range" => {
-                if args_expr.is_empty() || args_expr.len() > 3 {
-                    return Err("range() takes 1 to 3 arguments".to_string());
-                }
-                
-                // For now, we'll just return a simple array for the range
-                unsafe {
-                    // Process range arguments
-                    let _start_val = if args_expr.len() >= 2 {
-                        self.compile_expression(args_expr[0].clone())?
-                    } else {
-                        LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)
-                    };
-                    
-                    let stop_val = if args_expr.len() >= 2 {
-                        self.compile_expression(args_expr[1].clone())?
-                    } else {
-                        self.compile_expression(args_expr[0].clone())?
-                    };
-                    
-                    let _step_val = if args_expr.len() == 3 {
-                        self.compile_expression(args_expr[2].clone())?
-                    } else {
-                        LLVMConstInt(LLVMInt64TypeInContext(self.context), 1, 0)
-                    };
-                    
-                    // For simplicity in this implementation, we'll create an array with the bounds info
-                    // A full range implementation would generate actual arrays or iterators
-                    let range_info_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"range_info_struct_ptr\0".as_ptr() as *const _);
-                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, range_info_struct_ptr, 0, b".range_ptr_field\0".as_ptr() as *const _);
-                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, range_info_struct_ptr, 1, b".range_len_field\0".as_ptr() as *const _);
-                    
-                    // For now, just store the stop value in the "length" field as a placeholder
-                    LLVMBuildStore(self.builder, stop_val, len_field);
-                    LLVMBuildStore(self.builder, LLVMConstNull(LLVMPointerType(LLVMInt64TypeInContext(self.context), 0)), ptr_field);
-                    
-                    Ok(LLVMBuildLoad2(self.builder, self.array_type, range_info_struct_ptr, b".loaded_range_struct\0".as_ptr() as *const _))
-                }
+             "range" => {
+                 if args_expr.len() < 1 || args_expr.len() > 3 {
+                     return Err("range() takes 1 to 3 arguments".to_string());
+                 }
+
+                 unsafe {
+                     let i64_type = LLVMInt64TypeInContext(self.context);
+
+                     // Compile arguments
+                     let start_val = if args_expr.len() >= 2 {
+                         self.compile_expression(args_expr[0].clone())?
+                     } else {
+                         LLVMConstInt(i64_type, 0, 0)
+                     };
+
+                     let stop_val = if args_expr.len() >= 2 {
+                         self.compile_expression(args_expr[1].clone())?
+                     } else {
+                         self.compile_expression(args_expr[0].clone())?
+                     };
+
+                     let step_val = if args_expr.len() == 3 {
+                         self.compile_expression(args_expr[2].clone())?
+                     } else {
+                         LLVMConstInt(i64_type, 1, 0)
+                     };
+
+                     // Calculate the length of the range
+                     let length_val = LLVMBuildSDiv(self.builder, LLVMBuildSub(self.builder, stop_val, start_val, b"range_sub\0".as_ptr() as *const _), step_val, b"range_div\0".as_ptr() as *const _);
+
+                     // Allocate array for the range values
+                     let array_elements_ptr = LLVMBuildArrayMalloc(self.builder, i64_type, length_val, b"range_array\0".as_ptr() as *const _);
+
+                     // Generate the range values
+                     let mut index_val = LLVMConstInt(i64_type, 0, 0);
+                     let mut current_val = start_val;
+
+                     let loop_cond_bb = LLVMAppendBasicBlockInContext(self.context, self.function.unwrap(), b"range_loop_cond\0".as_ptr() as *const _);
+                     let loop_body_bb = LLVMAppendBasicBlockInContext(self.context, self.function.unwrap(), b"range_loop_body\0".as_ptr() as *const _);
+                     let loop_end_bb = LLVMAppendBasicBlockInContext(self.context, self.function.unwrap(), b"range_loop_end\0".as_ptr() as *const _);
+
+                     LLVMBuildBr(self.builder, loop_cond_bb);
+
+                     // Condition block
+                     LLVMPositionBuilderAtEnd(self.builder, loop_cond_bb);
+                     let cond_val = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSLT, index_val, length_val, b"range_cond\0".as_ptr() as *const _);
+                     LLVMBuildCondBr(self.builder, cond_val, loop_body_bb, loop_end_bb);
+
+                     // Body block
+                     LLVMPositionBuilderAtEnd(self.builder, loop_body_bb);
+                     let element_ptr = LLVMBuildGEP2(self.builder, i64_type, array_elements_ptr, &mut index_val, 1, b"range_element_ptr\0".as_ptr() as *const _);
+                     LLVMBuildStore(self.builder, current_val, element_ptr);
+
+                     // Increment index and current value
+                     index_val = LLVMBuildAdd(self.builder, index_val, LLVMConstInt(i64_type, 1, 0), b"range_index_inc\0".as_ptr() as *const _);
+                     current_val = LLVMBuildAdd(self.builder, current_val, step_val, b"range_val_inc\0".as_ptr() as *const _);
+                     LLVMBuildBr(self.builder, loop_cond_bb);
+
+                     // End block
+                     LLVMPositionBuilderAtEnd(self.builder, loop_end_bb);
+
+                     // Create the array struct
+                     let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"range_struct_ptr\0".as_ptr() as *const _);
+                     let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"range_ptr_field\0".as_ptr() as *const _);
+                     let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"range_len_field\0".as_ptr() as *const _);
+
+                     LLVMBuildStore(self.builder, array_elements_ptr, ptr_field);
+                     LLVMBuildStore(self.builder, length_val, len_field);
+
+                     Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_range_struct\0".as_ptr() as *const _))
+                 }
+              }
             }
             "str" => {
                 if args_expr.len() != 1 {
@@ -636,8 +671,17 @@ impl Compiler {
     fn compile_if_expression(&mut self, condition: ExpressionEnum, consequence: BlockStatement, alternative: Option<BlockStatement>) -> Result<LLVMValueRef, String> {
         unsafe {
             let cond = self.compile_expression(condition)?;
-            let zero = LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0);
-            let cond_val = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, cond, zero, b"ifcond\0".as_ptr() as *const _);
+            
+            // Handle truthiness: if the condition is not already a boolean (i1), compare it to zero.
+            let cond_val = {
+                let cond_type = LLVMTypeOf(cond);
+                if cond_type == LLVMInt1TypeInContext(self.context) {
+                    cond // Already a boolean
+                } else {
+                    let zero = LLVMConstInt(cond_type, 0, 0);
+                    LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, cond, zero, b"ifcond\0".as_ptr() as *const _)
+                }
+            };
 
             let function = self.function.ok_or("If expression not in a function")?;
 
@@ -711,22 +755,25 @@ impl Compiler {
         unsafe {
             let function = self.function.ok_or("For loop not in a function")?;
 
+            // Compile the iterable expression
             let iterable_expr = *for_expr.iterable;
-            
-            // Get the array struct (pointer to elements, length)
             let array_struct_val = self.compile_expression(iterable_expr)?;
 
-            // Directly extract elements pointer and length from the struct value
+            // Extract elements pointer and length from the array struct
             let elements_ptr = LLVMBuildExtractValue(self.builder, array_struct_val, 0, b"elements_ptr\0".as_ptr() as *const _);
             let array_len_val = LLVMBuildExtractValue(self.builder, array_struct_val, 1, b"array_len_val\0".as_ptr() as *const _);
 
-            // Create index variable
             let i64_type = LLVMInt64TypeInContext(self.context);
+
+            // Create allocas for index and loop variable *before* the loop.
             let index_alloca = self.create_entry_block_alloca("__for_index", i64_type);
+            let element_alloca = self.create_entry_block_alloca(&for_expr.element.value, i64_type);
+
+            // Initialize index to 0
             let zero = LLVMConstInt(i64_type, 0, 0);
             LLVMBuildStore(self.builder, zero, index_alloca);
 
-            // Create basic blocks
+            // Create basic blocks for the loop
             let cond_bb = LLVMAppendBasicBlockInContext(self.context, function, b"for_cond\0".as_ptr() as *const _);
             let body_bb = LLVMAppendBasicBlockInContext(self.context, function, b"for_body\0".as_ptr() as *const _);
             let inc_bb = LLVMAppendBasicBlockInContext(self.context, function, b"for_inc\0".as_ptr() as *const _);
@@ -736,49 +783,96 @@ impl Compiler {
 
             LLVMBuildBr(self.builder, cond_bb);
 
-            // Condition block
+            // Condition block: check if index < length
             LLVMPositionBuilderAtEnd(self.builder, cond_bb);
             let index = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx\0".as_ptr() as *const _);
             let cond = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntULT, index, array_len_val, b"forcond\0".as_ptr() as *const _);
             LLVMBuildCondBr(self.builder, cond, body_bb, after_bb);
 
-            // Body block
+            // Body block: get element and execute body
             LLVMPositionBuilderAtEnd(self.builder, body_bb);
-            let element_alloca = self.create_entry_block_alloca(&for_expr.element.value, i64_type);
             let mut index_in_body = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx_body\0".as_ptr() as *const _);
             
             let element_ptr = LLVMBuildGEP2(self.builder, i64_type, elements_ptr, &mut index_in_body, 1, b"element_ptr\0".as_ptr() as *const _);
             let element_val = LLVMBuildLoad2(self.builder, i64_type, element_ptr, b"loaded_element\0".as_ptr() as *const _);
             LLVMBuildStore(self.builder, element_val, element_alloca);
+            
             self.variables.insert(for_expr.element.value.clone(), element_alloca);
-
             self.compile_block_statement(for_expr.body)?;
             self.variables.remove(&for_expr.element.value);
 
             LLVMBuildBr(self.builder, inc_bb);
 
-            // Increment block
+            // Increment block: index++
             LLVMPositionBuilderAtEnd(self.builder, inc_bb);
-            let index_to_inc = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), index_alloca, b"load_idx_inc\0".as_ptr() as *const _);
-            let one = LLVMConstInt(LLVMInt64TypeInContext(self.context), 1, 0);
+            let index_to_inc = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx_inc\0".as_ptr() as *const _);
+            let one = LLVMConstInt(i64_type, 1, 0);
             let next_index = LLVMBuildAdd(self.builder, index_to_inc, one, b"next_idx\0".as_ptr() as *const _);
             LLVMBuildStore(self.builder, next_index, index_alloca);
             LLVMBuildBr(self.builder, cond_bb);
 
+            // After loop block
             LLVMPositionBuilderAtEnd(self.builder, after_bb);
             self.loop_contexts.pop();
 
-            Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0))
+            Ok(LLVMConstInt(i64_type, 0, 0))
         }
     }
 
-    fn compile_block_statement(&mut self, block: BlockStatement) -> Result<LLVMValueRef, String> {
-        let mut result = ptr::null_mut();
-        for stmt in block.statements {
-            result = self.compile_statement(stmt)?;
-        }
-        Ok(result)
-    }
+     fn compile_block_statement(&mut self, block: BlockStatement) -> Result<LLVMValueRef, String> {
+         let mut result = ptr::null_mut();
+         for stmt in block.statements {
+             result = self.compile_statement(stmt)?;
+         }
+         Ok(result)
+     }
+
+     fn compile_hash_literal(&mut self, hash_lit: crate::ast::HashLiteral) -> Result<LLVMValueRef, String> {
+         unsafe {
+             let i64_type = LLVMInt64TypeInContext(self.context);
+             let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
+
+             // Create struct type for hashmap: { i8**, i64*, i64 } (keys, values, size)
+             let hash_struct_types = [i8_ptr_type, i8_ptr_type, i64_type];
+             let hash_type = LLVMStructTypeInContext(self.context, hash_struct_types.as_ptr() as *mut _, 3, 0);
+
+             // Allocate the hashmap struct
+             let hash_struct_ptr = LLVMBuildAlloca(self.builder, hash_type, b"hash_struct_ptr\0".as_ptr() as *const _);
+
+             let num_pairs = hash_lit.pairs.len() as u64;
+             let num_pairs_val = LLVMConstInt(i64_type, num_pairs, 0);
+
+             // Allocate arrays for keys and values
+             let keys_array_ptr = LLVMBuildArrayMalloc(self.builder, i8_ptr_type, num_pairs_val, b"keys_array\0".as_ptr() as *const _);
+             let values_array_ptr = LLVMBuildArrayMalloc(self.builder, i8_ptr_type, num_pairs_val, b"values_array\0".as_ptr() as *const _);
+
+             // Store keys and values
+             for (i, (key, value_expr)) in hash_lit.pairs.iter().enumerate() {
+                 let key_cstr = CString::new(key.as_str()).unwrap();
+                 let key_global = LLVMBuildGlobalStringPtr(self.builder, key_cstr.as_ptr(), b"key_str\0".as_ptr() as *const _);
+                 let value_val = self.compile_expression(value_expr.clone())?;
+
+                 let mut index_val = LLVMConstInt(i64_type, i as u64, 0);
+
+                 let key_ptr = LLVMBuildGEP2(self.builder, i8_ptr_type, keys_array_ptr, &mut index_val, 1, b"key_ptr\0".as_ptr() as *const _);
+                 let value_ptr = LLVMBuildGEP2(self.builder, i8_ptr_type, values_array_ptr, &mut index_val, 1, b"value_ptr\0".as_ptr() as *const _);
+
+                 LLVMBuildStore(self.builder, key_global, key_ptr);
+                 LLVMBuildStore(self.builder, value_val, value_ptr);
+             }
+
+             // Store pointers and size in the struct
+             let keys_field = LLVMBuildStructGEP2(self.builder, hash_type, hash_struct_ptr, 0, b"keys_field\0".as_ptr() as *const _);
+             let values_field = LLVMBuildStructGEP2(self.builder, hash_type, hash_struct_ptr, 1, b"values_field\0".as_ptr() as *const _);
+             let size_field = LLVMBuildStructGEP2(self.builder, hash_type, hash_struct_ptr, 2, b"size_field\0".as_ptr() as *const _);
+
+             LLVMBuildStore(self.builder, keys_array_ptr, keys_field);
+             LLVMBuildStore(self.builder, values_array_ptr, values_field);
+             LLVMBuildStore(self.builder, num_pairs_val, size_field);
+
+             Ok(LLVMBuildLoad2(self.builder, hash_type, hash_struct_ptr, b"loaded_hash_struct\0".as_ptr() as *const _))
+         }
+     }
 
     fn create_entry_block_alloca(&mut self, name: &str, ty: LLVMTypeRef) -> LLVMValueRef {
         unsafe {
