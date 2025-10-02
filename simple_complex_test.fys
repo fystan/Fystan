@@ -1,0 +1,30 @@
+# Simplified complex test for Fystan language
+x = 5
+y = 10
+result = x + y
+print("Basic arithmetic result:")
+print(result)
+
+# Function definition
+def factorial(n):
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+# Function call
+fact_result = factorial(4)
+print("Factorial of 4:")
+print(fact_result)
+
+# Simple condition
+if x > 3:
+    print("x is greater than 3")
+
+# Array and length
+arr = [1, 2, 3, 4]
+arr_len = len(arr)
+print("Array length:")
+print(arr_len)
+
+print("Simple test completed!")

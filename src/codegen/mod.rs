@@ -1,967 +1,399 @@
 use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
-use crate::builtins;
-use crate::parser::Parser;
-use inkwell::llvm_sys::core::*; 
-use inkwell::llvm_sys::prelude::*; 
-use inkwell::llvm_sys::target::{LLVM_InitializeAllAsmParsers, LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs, LLVM_InitializeAllTargets};
-use inkwell::llvm_sys::target_machine::{LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMRelocMode, LLVMGetTargetFromTriple, LLVMTargetMachineEmitToFile};
 use std::collections::HashMap;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
-use std::ptr;
-
-// A struct to hold loop context for break/continue
-pub struct LoopContext {
-    cond_bb: LLVMBasicBlockRef,
-    after_bb: LLVMBasicBlockRef,
-}
-
-use inkwell::llvm_sys::LLVMLinkage;
+use std::fmt::Write;
 
 pub struct Compiler {
-    context: LLVMContextRef,
-    module: LLVMModuleRef,
-    builder: LLVMBuilderRef,
-    alloca_builder: LLVMBuilderRef,
-    variables: HashMap<String, LLVMValueRef>,
-    function: Option<LLVMValueRef>,
-    loop_contexts: Vec<LoopContext>,
-    printf_func: LLVMValueRef,
-    fgets_func: LLVMValueRef,
-    fgets_type: LLVMTypeRef,
-    strlen_func: LLVMValueRef,
-    strlen_type: LLVMTypeRef,
-    stdin_ptr: LLVMValueRef,
-    array_type: LLVMTypeRef,
+    // A stack to keep track of variable scopes
+    scopes: Vec<HashMap<String, bool>>,
+    // Counter for generating unique names for temporary values
+    temp_counter: usize,
 }
 
 impl Compiler {
-    pub fn new(context: LLVMContextRef) -> Self {
-        unsafe {
-            let module = LLVMModuleCreateWithNameInContext(b"fystan_module\0".as_ptr() as *const _, context);
-            let builder = LLVMCreateBuilderInContext(context);
-            let alloca_builder = LLVMCreateBuilderInContext(context);
-
-            let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-            let i32_type = LLVMInt32TypeInContext(context);
-            let i64_type = LLVMInt64TypeInContext(context);
-
-            let printf_type = LLVMFunctionType(i32_type, [i8_ptr_type].as_mut_ptr(), 1, 1);
-            let printf_func = LLVMAddFunction(module, b"printf\0".as_ptr() as *const _, printf_type);
-
-            let file_type = LLVMPointerType(LLVMInt8TypeInContext(context), 0);
-            let fgets_type = LLVMFunctionType(i8_ptr_type, [i8_ptr_type, i32_type, file_type].as_mut_ptr(), 3, 0);
-            let fgets_func = LLVMAddFunction(module, b"fgets\0".as_ptr() as *const _, fgets_type);
-
-            let strlen_type = LLVMFunctionType(i64_type, [i8_ptr_type].as_mut_ptr(), 1, 0);
-            let strlen_func = LLVMAddFunction(module, b"strlen\0".as_ptr() as *const _, strlen_type);
-
-            let stdin_name = CString::new("stdin").unwrap();
-            let stdin_ptr = LLVMAddGlobal(module, file_type, stdin_name.as_ptr());
-            LLVMSetLinkage(stdin_ptr, LLVMLinkage::LLVMExternalLinkage);
-
-            let array_struct_types = [LLVMPointerType(i64_type, 0), i64_type];
-            let array_type = LLVMStructTypeInContext(context, array_struct_types.as_ptr() as *mut _, 2, 0);
-
-            Compiler {
-                context,
-                module,
-                builder,
-                alloca_builder,
-                variables: HashMap::new(),
-                function: None,
-                loop_contexts: Vec::new(),
-                printf_func,
-                fgets_func,
-                fgets_type,
-                strlen_func,
-                strlen_type,
-                stdin_ptr,
-                array_type,
-            }
+    pub fn new() -> Self {
+        Compiler {
+            scopes: vec![HashMap::new()], // Global scope
+            temp_counter: 0,
         }
     }
 
-    pub fn run_from_source(source: &str, target_triple: &str, output_filename: &str) -> Result<(), String> {
-        unsafe {
-            let context = LLVMContextCreate();
-            let mut compiler = Compiler::new(context);
-            let l = crate::lexer::Lexer::new(source);
-            let mut p = Parser::new(l);
-            let program = p.parse_program();
-            let errors = p.errors();
-            if !errors.is_empty() {
-                LLVMContextDispose(context);
-                return Err(format!("Parser errors: {:?}", errors));
-            }
-            
-            compiler.setup_test_main_function();
-
-            compiler.compile(program)?;
-
-            let last_block = LLVMGetLastBasicBlock(compiler.function.unwrap());
-            if LLVMGetBasicBlockTerminator(last_block).is_null() {
-                LLVMPositionBuilderAtEnd(compiler.builder, last_block);
-                let zero = LLVMConstInt(LLVMInt64TypeInContext(context), 0, 0);
-                LLVMBuildRet(compiler.builder, zero);
-            }
-
-            compiler.write_to_file(target_triple, output_filename)?;
-
-            LLVMContextDispose(context);
-            Ok(())
+    pub fn run_from_source(source: &str, output_filename: &str) -> Result<(), String> {
+        let l = crate::lexer::Lexer::new(source);
+        let mut p = crate::parser::Parser::new(l);
+        let program = p.parse_program();
+        let errors = p.errors();
+        if !errors.is_empty() {
+            return Err(format!("Parser errors: {:?}", errors));
         }
+        
+        let mut compiler = Compiler::new();
+        let rust_code = compiler.compile(program)?;
+        
+        // Write the generated Rust code to a temporary file (without .exe extension)
+        let temp_rs_name = output_filename.trim_end_matches(".exe");
+        let temp_rs_file = format!("{}.rs", temp_rs_name);
+        std::fs::write(&temp_rs_file, rust_code)
+            .map_err(|e| format!("Failed to write temporary file: {}", e))?;
+        
+        // Compile the Rust code to an executable using rustc
+        let output = std::process::Command::new("rustc")
+            .arg(&temp_rs_file)
+            .arg("-o")
+            .arg(output_filename)
+            .output()
+            .map_err(|e| format!("Failed to run rustc: {}", e))?;
+        
+        if !output.status.success() {
+            return Err(format!("Rust compilation failed: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+        
+        // Clean up the temporary Rust file
+        std::fs::remove_file(&temp_rs_file)
+            .map_err(|e| format!("Failed to clean up temporary file: {}", e))?;
+        
+        Ok(())
     }
 
-    pub fn compile(&mut self, program: Program) -> Result<LLVMValueRef, String> {
-        let mut result = ptr::null_mut();
-        for statement in program.statements {
-            result = self.compile_statement(statement)?;
+    pub fn compile(&mut self, program: Program) -> Result<String, String> {
+        let mut result = String::new();
+        let mut function_defs = String::new();
+        let mut main_statements = String::new();
+        let mut has_user_main = false;
+        
+        // Add necessary imports and standard definitions
+        writeln!(result, "// Auto-generated Rust code from Fystan program").unwrap();
+        
+        // First pass: collect function definitions and main statements separately
+        for statement in &program.statements {
+            if let Statement::Expression(expr_stmt) = statement {
+                if let ExpressionEnum::Function(func_lit) = &expr_stmt.expression {
+                    // Check if it's a user-defined main function
+                    if func_lit.name.value == "main" {
+                        has_user_main = true;
+                    }
+                    // Handle all function definitions (including main)
+                    let func_code = self.compile_function_definition(func_lit.clone())?;
+                    function_defs.push_str(&func_code);
+                    function_defs.push('\n');
+                } else {
+                    // Non-function expressions go to main
+                    let stmt_code = self.compile_statement(statement.clone())?;
+                    writeln!(main_statements, "    {}", stmt_code).unwrap();
+                }
+            } else {
+                // Other statement types go to main
+                let stmt_code = self.compile_statement(statement.clone())?;
+                writeln!(main_statements, "    {}", stmt_code).unwrap();
+            }
         }
+        
+        // Write function definitions (excluding main if user defined it)
+        result.push_str(&function_defs);
+        
+        // Only write default main function if there's no user-defined main
+        if !has_user_main {
+            writeln!(result, "fn main() {{").unwrap();
+            result.push_str(&main_statements);
+            writeln!(result, "}}").unwrap();
+        } else {
+            // If user defined main, don't add additional main statements
+            // The user's main function will be the only main function
+        }
+        
         Ok(result)
     }
 
-    fn compile_statement(&mut self, statement: Statement) -> Result<LLVMValueRef, String> {
-        match statement {
-            Statement::Expression(expr_stmt) => self.compile_expression(expr_stmt.expression),
-            Statement::Return(ret_stmt) => {
-                let value = self.compile_expression(ret_stmt.return_value)?;
-                unsafe { LLVMBuildRet(self.builder, value) };
-                Ok(value)
-            }
-            Statement::Break(_) => {
-                if let Some(context) = self.loop_contexts.last() {
-                    unsafe { LLVMBuildBr(self.builder, context.after_bb) };
-                    unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
-                } else {
-                    Err("'break' outside of a loop".to_string())
-                }
-            }
-            Statement::Continue(_) => {
-                if let Some(context) = self.loop_contexts.last() {
-                    unsafe { LLVMBuildBr(self.builder, context.cond_bb) };
-                    unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
-                } else {
-                    Err("'continue' outside of a loop".to_string())
-                }
-            }
-            Statement::Pass(_) => {
-                // Pass statement does nothing, return a dummy value
-                unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
-            }
-            Statement::Try(try_stmt) => {
-                // Basic try implementation - in a real Python implementation, we would need to properly implement exception handling.
-                // For now we'll just execute the try block and ignore exception handling.
-                self.compile_block_statement(try_stmt.body)?;
-                
-                for _except_clause in try_stmt.except_clauses {
-                    // In a real implementation, we'd have more sophisticated exception handling.
-                    // For now, we simply return Ok from the try statement.
-                    // This is a simplification to make the structure work.
-                }
-                
-                if let Some(else_block) = try_stmt.else_block {
-                    self.compile_block_statement(else_block)?;
-                }
-                
-                if let Some(finally_block) = try_stmt.finally_block {
-                    self.compile_block_statement(finally_block)?;
-                }
-                
-                unsafe { Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) }
+    fn compile_function_definition(&mut self, func_lit: crate::ast::FunctionLiteral) -> Result<String, String> {
+        let name = func_lit.name.value;
+        let mut params = Vec::new();
+        
+        // Collect parameter names before moving them
+        for param in &func_lit.parameters {
+            params.push(param.value.clone());
+        }
+        
+        // Add function parameters to a new scope
+        self.scopes.push(HashMap::new());
+        for param in &func_lit.parameters {
+            self.scopes.last_mut().unwrap().insert(param.value.clone(), true);
+        }
+        
+        let body = self.compile_block_statement(func_lit.body)?;
+        
+        // Remove the function scope
+        self.scopes.pop();
+        
+        // Special handling for user-defined main function - make it the actual main function
+        if name == "main" {
+            // For user main, remove any return statements that return values since Rust main returns ()
+            let processed_body = if body.contains("return ") {
+                // Replace return statements that return values with just the value evaluation or empty returns
+                body.replace("return 0;", "")
+                    .replace("return", "// return")  // Comment out other returns
+            } else {
+                body
+            };
+            
+            Ok(format!(
+                "fn main() {{ {} }}",
+                processed_body
+            ))
+        } else {
+            // Check if the function body already contains a return statement
+            // If not, add a default return 0;
+            if !body.contains("return ") {
+                Ok(format!(
+                    "fn {}({}) -> i64 {{ {} return 0; }}",
+                    name,
+                    params.join(", "),
+                    body
+                ))
+            } else {
+                Ok(format!(
+                    "fn {}({}) -> i64 {{ {} }}",
+                    name,
+                    params.join(", "),
+                    body
+                ))
             }
         }
     }
 
-    fn compile_expression(&mut self, expression: ExpressionEnum) -> Result<LLVMValueRef, String> {
+    fn compile_statement(&mut self, statement: Statement) -> Result<String, String> {
+        match statement {
+            Statement::Expression(expr_stmt) => {
+                let expr_code = self.compile_expression(expr_stmt.expression)?;
+                // For expressions that result in values (not assignments or calls with side effects),
+                // we may want to use them differently than just as statements.
+                // For now, add a semicolon to make it a statement
+                Ok(format!("{};", expr_code))
+            },
+            Statement::Return(ret_stmt) => {
+                let value = self.compile_expression(ret_stmt.return_value)?;
+                Ok(format!("return {};", value))
+            },
+            Statement::Break(_) => {
+                Ok("break;".to_string())
+            },
+            Statement::Continue(_) => {
+                Ok("continue;".to_string())
+            },
+            Statement::Pass(_) => {
+                // Pass statement does nothing
+                Ok("/* pass */".to_string())
+            },
+            Statement::Try(try_stmt) => {
+                // For now, simplify try-catch to just execute the try block
+                // More sophisticated exception handling would require significant changes
+                Ok(format!("{{ {} }}", self.compile_block_statement(try_stmt.body)?))
+            },
+        }
+    }
+
+    fn compile_expression(&mut self, expression: ExpressionEnum) -> Result<String, String> {
         match expression {
-            ExpressionEnum::IntegerLiteral(lit) => unsafe {
-                Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), lit.value as u64, 0))
-            },
-            ExpressionEnum::FloatLiteral(lit) => unsafe {
-                Ok(LLVMConstReal(LLVMDoubleTypeInContext(self.context), lit.value))
-            },
-            ExpressionEnum::StringLiteral(lit) => unsafe {
-                let c_string = CString::new(lit.value.as_str()).unwrap();
-                let global_string = LLVMBuildGlobalStringPtr(self.builder, c_string.as_ptr(), b".str\0".as_ptr() as *const _);
-                
-                // Create a struct { i8*, i64 } for string (pointer, length)
-                let string_len = lit.value.len() as u64;
-                let string_len_val = LLVMConstInt(LLVMInt64TypeInContext(self.context), string_len, 0);
-
-                let string_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b".str_struct_ptr\0".as_ptr() as *const _);
-                let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 0, b".ptr_field\0".as_ptr() as *const _);
-                let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 1, b".len_field\0".as_ptr() as *const _);
-
-                LLVMBuildStore(self.builder, global_string, ptr_field);
-                LLVMBuildStore(self.builder, string_len_val, len_field);
-
-                Ok(LLVMBuildLoad2(self.builder, self.array_type, string_struct_ptr, b".loaded_string_struct\0".as_ptr() as *const _))
-            },
-            ExpressionEnum::Boolean(b) => unsafe {
-                Ok(LLVMConstInt(LLVMInt1TypeInContext(self.context), b.value as u64, 0))
-            },
-            ExpressionEnum::None(_) => unsafe {
-                // None is represented as a null pointer
-                Ok(LLVMConstNull(LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)))
-            },
+            ExpressionEnum::IntegerLiteral(lit) => Ok(lit.value.to_string()),
+            ExpressionEnum::FloatLiteral(lit) => Ok(lit.value.to_string()),
+            ExpressionEnum::StringLiteral(lit) => Ok(format!("\"{}\"", lit.value)),
+            ExpressionEnum::Boolean(b) => Ok(b.value.to_string()),
+            ExpressionEnum::None(_) => Ok("None".to_string()),
             ExpressionEnum::Identifier(ident) => {
-                if let Some(value) = self.variables.get(&ident.value) {
-                    // Need to load based on the type of the alloca
-                    let var_type = unsafe { LLVMGetAllocatedType(*value) };
-                    unsafe { Ok(LLVMBuildLoad2(self.builder, var_type, *value, b"loadtmp\0".as_ptr() as *const _)) }
-                } else {
-                    Err(format!("Unknown variable: {}", ident.value))
-                }
-            }
-            ExpressionEnum::Prefix(prefix_expr) => {
-                let right = self.compile_expression(*prefix_expr.right)?;
-                unsafe {
-                    match prefix_expr.operator {
-                        PrefixOperator::Not => {
-                            let zero = LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0);
-                            Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, right, zero, b"booltmp\0".as_ptr() as *const _))
-                        }
-                        PrefixOperator::Minus => Ok(LLVMBuildNeg(self.builder, right, b"negtmp\0".as_ptr() as *const _)),
+                // Check if the identifier exists in any scope
+                for scope in self.scopes.iter().rev() {
+                    if scope.contains_key(&ident.value) {
+                        return Ok(ident.value.clone());
                     }
                 }
-            }
+                // If not found in any scope, treat as variable
+                Ok(ident.value)
+            },
+            ExpressionEnum::Prefix(prefix_expr) => {
+                let right = self.compile_expression(*prefix_expr.right)?;
+                let op_str = match prefix_expr.operator {
+                    PrefixOperator::Not => "!",
+                    PrefixOperator::Minus => "-",
+                };
+                Ok(format!("({} {})", op_str, right))
+            },
             ExpressionEnum::Infix(infix_expr) => {
                 if infix_expr.operator == InfixOperator::Assign {
                     if let ExpressionEnum::Identifier(ident) = *infix_expr.left {
-                        let value = self.compile_expression(*infix_expr.right)?;
-                        let var = if let Some(var) = self.variables.get(&ident.value) {
-                            *var
-                        } else {
-                            let value_type = unsafe { LLVMTypeOf(value) };
-                            let alloca = self.create_entry_block_alloca(&ident.value, value_type);
-                            self.variables.insert(ident.value.clone(), alloca);
-                            alloca
+                        let scope_depth = self.scopes.len();
+                        let is_new_var = {
+                            let current_scope = &self.scopes[scope_depth - 1];
+                            !current_scope.contains_key(&ident.value)
                         };
-                        unsafe { LLVMBuildStore(self.builder, value, var) };
-                        return Ok(value);
+                        
+                        // Add the variable to the current scope
+                        self.scopes.last_mut().unwrap().insert(ident.value.clone(), true);
+                        
+                        let value = self.compile_expression(*infix_expr.right)?;
+                        if is_new_var {
+                            Ok(format!("let {} = {};", ident.value, value))
+                        } else {
+                            Ok(format!("{} = {};", ident.value, value))
+                        }
                     } else {
                         return Err("Destination of assignment must be an identifier".to_string());
                     }
+                } else {
+                    let left = self.compile_expression(*infix_expr.left)?;
+                    let right = self.compile_expression(*infix_expr.right)?;
+                    let op_str = match infix_expr.operator {
+                        InfixOperator::Plus => "+",
+                        InfixOperator::Minus => "-",
+                        InfixOperator::Multiply => "*",
+                        InfixOperator::Divide => "/",
+                        InfixOperator::Mod => "%",
+                        InfixOperator::Eq => "==",
+                        InfixOperator::NotEq => "!=",
+                        InfixOperator::Is => "==",  // Simplification
+                        InfixOperator::IsNot => "!=", // Simplification
+                        InfixOperator::Lt => "<",
+                        InfixOperator::Gt => ">",
+                        InfixOperator::And => "&&",
+                        InfixOperator::Or => "||",
+                        InfixOperator::Assign => "=", // This should be handled above
+                        InfixOperator::PlusEq => "+=",
+                        InfixOperator::MinusEq => "-=",
+                        InfixOperator::AsteriskEq => "*=",
+                        InfixOperator::SlashEq => "/=",
+                    };
+                    Ok(format!("{} {} {}", left, op_str, right))
                 }
-                self.compile_infix_expression(*infix_expr.left, infix_expr.operator, *infix_expr.right)
-            }
-            ExpressionEnum::If(if_expr) => self.compile_if_expression(*if_expr.condition, if_expr.consequence, if_expr.alternative),
-            ExpressionEnum::While(while_expr) => self.compile_while_expression(*while_expr.condition, while_expr.body),
-            ExpressionEnum::For(for_expr) => self.compile_for_expression(for_expr),
+            },
+            ExpressionEnum::If(if_expr) => {
+                let condition = self.compile_expression(*if_expr.condition)?;
+                let consequence = self.compile_block_statement(if_expr.consequence)?;
+                let alternative = if let Some(alt) = if_expr.alternative {
+                    format!(" else {{ {} }}", self.compile_block_statement(alt)?)
+                } else {
+                    String::new()
+                };
+                Ok(format!("if {} {{ {} }}{}", condition, consequence, alternative))
+            },
+            ExpressionEnum::While(while_expr) => {
+                let condition = self.compile_expression(*while_expr.condition)?;
+                let body = self.compile_block_statement(while_expr.body)?;
+                Ok(format!("while {} {{ {} }}", condition, body))
+            },
+            ExpressionEnum::For(for_expr) => {
+                let element = for_expr.element.value;
+                let iterable = self.compile_expression(*for_expr.iterable)?;
+                let body = self.compile_block_statement(for_expr.body)?;
+                
+                // Add the loop variable to the current scope
+                self.scopes.last_mut().unwrap().insert(element.clone(), true);
+                
+                Ok(format!("for {} in {} {{ {} }}", element, iterable, body))
+            },
             ExpressionEnum::Call(call_expr) => {
                 if let ExpressionEnum::Identifier(ident) = *call_expr.function {
-                    // Check for built-in functions first
-                    if let Some(builtin) = builtins::get_builtin(&ident.value) {
-                        return self.compile_builtin_call(builtin, call_expr.arguments);
-                    }
-
-                    // Handle user-defined functions
-                    let function_name = CString::new(ident.value.as_str()).unwrap();
-                    let function = self.get_or_create_function(&function_name, call_expr.arguments.len());
-                    
-                    let mut args = Vec::new();
-                    for arg_expr in call_expr.arguments {
-                        args.push(self.compile_expression(arg_expr)?);
-                    }
-
-                    unsafe {
-                        let i64_type = LLVMInt64TypeInContext(self.context);
-                        let mut arg_types: Vec<_> = (0..args.len()).map(|_| i64_type).collect();
-                        let fn_type = LLVMFunctionType(i64_type, arg_types.as_mut_ptr(), args.len() as u32, 0);
-                        Ok(LLVMBuildCall2(self.builder, fn_type, function, args.as_mut_ptr(), args.len() as u32, b"calltmp\0".as_ptr() as *const _))
+                    match ident.value.as_str() {
+                        "print" => {
+                            if call_expr.arguments.len() != 1 {
+                                return Err("print() takes exactly one argument".to_string());
+                            }
+                            let arg = self.compile_expression(call_expr.arguments[0].clone())?;
+                            Ok(format!("println!(\"{{}}\", {})", arg))
+                        },
+                        "len" => {
+                            if call_expr.arguments.len() != 1 {
+                                return Err("len() takes exactly one argument".to_string());
+                            }
+                            let arg = self.compile_expression(call_expr.arguments[0].clone())?;
+                            Ok(format!("{}.len() as i64", arg))
+                        },
+                        "read_line" => {
+                            if !call_expr.arguments.is_empty() {
+                                return Err("read_line() takes no arguments".to_string());
+                            }
+                            let temp_var = format!("temp_input_{}", self.temp_counter);
+                            self.temp_counter += 1;
+                            Ok(format!(
+                                "{{ let mut {} = String::new(); std::io::stdin().read_line(&mut {}).unwrap(); {}.trim().to_string() }}", 
+                                temp_var, temp_var, temp_var
+                            ))
+                        },
+                        "range" => {
+                            let args_len = call_expr.arguments.len();
+                            if args_len < 1 || args_len > 3 {
+                                return Err("range() takes 1 to 3 arguments".to_string());
+                            }
+                            
+                            let start = if args_len >= 2 {
+                                self.compile_expression(call_expr.arguments[0].clone())?
+                            } else {
+                                "0".to_string()
+                            };
+                            
+                            let stop = if args_len >= 2 {
+                                self.compile_expression(call_expr.arguments[1].clone())?
+                            } else {
+                                self.compile_expression(call_expr.arguments[0].clone())?
+                            };
+                            
+                            if args_len == 3 {
+                                let step = self.compile_expression(call_expr.arguments[2].clone())?;
+                                Ok(format!("({}..{}).step_by({} as usize)", start, stop, step))
+                            } else {
+                                Ok(format!("({}..{})", start, stop))
+                            }
+                        },
+                        _ => {
+                            // For other function calls, assume it's a user-defined function
+                            let mut args = Vec::new();
+                            for arg in call_expr.arguments {
+                                args.push(self.compile_expression(arg)?);
+                            }
+                            Ok(format!("{}({})", ident.value, args.join(", ")))
+                        }
                     }
                 } else {
                     Err("Function name must be an identifier".to_string())
                 }
-            }
-            ExpressionEnum::ArrayLiteral(arr_lit) => unsafe {
-                let i64_type = LLVMInt64TypeInContext(self.context);
-                let array_len = arr_lit.elements.len() as u64;
-                let array_len_val = LLVMConstInt(i64_type, array_len, 0);
-
-                // Allocate memory for elements on the heap (or stack for small arrays)
-                let array_elements_ptr = LLVMBuildArrayMalloc(self.builder, i64_type, array_len_val, b"array_elements\0".as_ptr() as *const _);
-
-                // Store elements
-                for (i, element_expr) in arr_lit.elements.into_iter().enumerate() {
-                    let element_val = self.compile_expression(element_expr)?;
-                    let mut index_val = LLVMConstInt(i64_type, i as u64, 0);
-                    let element_ptr = LLVMBuildGEP2(self.builder, i64_type, array_elements_ptr, &mut index_val, 1, b"element_ptr\0".as_ptr() as *const _);
-                    LLVMBuildStore(self.builder, element_val, element_ptr);
-                }
-
-                // Create the array struct { i64*, i64 }
-                let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"array_struct_ptr\0".as_ptr() as *const _);
-                let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
-                let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
-
-                LLVMBuildStore(self.builder, array_elements_ptr, ptr_field);
-                LLVMBuildStore(self.builder, array_len_val, len_field);
-
-                Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_array_struct\0".as_ptr() as *const _))
             },
-            ExpressionEnum::IndexExpression(idx_expr) => unsafe {
-                let array_val = self.compile_expression(*idx_expr.left)?;
-                let mut index_val = self.compile_expression(*idx_expr.index)?;
-
-                // Directly extract the pointer to the elements from the struct value
-                let elements_ptr = LLVMBuildExtractValue(self.builder, array_val, 0, b"elements_ptr\0".as_ptr() as *const _);
-
-                let element_ptr = LLVMBuildGEP2(self.builder, LLVMInt64TypeInContext(self.context), elements_ptr, &mut index_val, 1, b"indexed_element_ptr\0".as_ptr() as *const _);
-                Ok(LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.context), element_ptr, b"indexed_element\0".as_ptr() as *const _))
+            ExpressionEnum::ArrayLiteral(arr_lit) => {
+                let mut elements = Vec::new();
+                for element in arr_lit.elements {
+                    elements.push(self.compile_expression(element)?);
+                }
+                Ok(format!("vec![{}]", elements.join(", ")))
             },
-             ExpressionEnum::Function(func_lit) => self.compile_function(func_lit),
-             ExpressionEnum::HashLiteral(hash_lit) => self.compile_hash_literal(hash_lit),
-             _ => Err(format!("Expression not yet implemented: {:?}", expression)),
+            ExpressionEnum::IndexExpression(idx_expr) => {
+                let array = self.compile_expression(*idx_expr.left)?;
+                let index = self.compile_expression(*idx_expr.index)?;
+                Ok(format!("{}[{}]", array, index))
+            },
+            ExpressionEnum::HashLiteral(hash_lit) => {
+                let mut code = "{ let mut map = std::collections::HashMap::new(); ".to_string();
+                for (key, value) in hash_lit.pairs {
+                    let value_code = self.compile_expression(value)?;
+                    code.push_str(&format!("map.insert(\"{}\".to_string(), {}); ", key, value_code));
+                }
+                code.push_str("map }");
+                Ok(code)
+            },
+            ExpressionEnum::Function(_) => {
+                // Function expressions should be handled at the statement level
+                Ok("/* function definition */".to_string())
+            },
         }
     }
 
-    fn compile_function(&mut self, func_lit: crate::ast::FunctionLiteral) -> Result<LLVMValueRef, String> {
-        unsafe {
-            let function_name = CString::new(func_lit.name.value.as_str()).unwrap();
-            let num_params = func_lit.parameters.len();
-
-            // Create function signature
-            let i64_type = LLVMInt64TypeInContext(self.context);
-            let mut param_types = vec![i64_type; num_params];
-            let function_type = LLVMFunctionType(i64_type, param_types.as_mut_ptr(), num_params as u32, 0);
-
-            // Add function to module
-            let function = LLVMAddFunction(self.module, function_name.as_ptr(), function_type);
-
-            // Create entry block
-            let entry = LLVMAppendBasicBlockInContext(self.context, function, b"entry\0".as_ptr() as *const _);
-
-            // Save current function and builder position, and variables
-            let old_function = self.function;
-            let old_builder_block = LLVMGetInsertBlock(self.builder);
-            let old_variables = self.variables.clone();
-
-            // Set new function context
-            self.function = Some(function);
-            self.variables.clear();
-            LLVMPositionBuilderAtEnd(self.builder, entry);
-
-            // Allocate space for parameters and store them
-            for (i, param) in func_lit.parameters.iter().enumerate() {
-                let param_name = &param.value;
-                let llvm_param = LLVMGetParam(function, i as u32);
-                let alloca = self.create_entry_block_alloca(param_name, i64_type);
-                LLVMBuildStore(self.builder, llvm_param, alloca);
-                self.variables.insert(param_name.clone(), alloca);
-            }
-
-            // Compile function body
-            self.compile_block_statement(func_lit.body)?;
-
-            // If the function does not have a terminator, add a default return
-            let last_block = LLVMGetLastBasicBlock(self.function.unwrap());
-            if LLVMGetBasicBlockTerminator(last_block).is_null() {
-                // Check if the last statement was a return, if not, add a default return 0
-                let zero = LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0);
-                LLVMBuildRet(self.builder, zero);
-            }
-
-            // Restore old function context
-            self.function = old_function;
-            self.variables = old_variables;
-            if !old_builder_block.is_null() {
-                LLVMPositionBuilderAtEnd(self.builder, old_builder_block);
-            }
-
-            Ok(function)
+    fn compile_block_statement(&mut self, block: BlockStatement) -> Result<String, String> {
+        // Create a new scope
+        self.scopes.push(HashMap::new());
+        
+        let mut result = String::new();
+        for stmt in block.statements {
+            result.push_str(&self.compile_statement(stmt)?);
+            result.push_str("\n        ");
         }
-    }
-
-    fn compile_builtin_call(&mut self, builtin: &builtins::Builtin, args_expr: Vec<ExpressionEnum>) -> Result<LLVMValueRef, String> {
-        match builtin.name {
-            "print" => {
-                if args_expr.len() != 1 {
-                    return Err("print() takes exactly one argument".to_string());
-                }
-                let arg_val = self.compile_expression(args_expr[0].clone())?;
-                
-                let (format_str_ptr, val_to_print) = unsafe {
-                    let arg_type = LLVMTypeOf(arg_val);
-                    // Check if the argument is a pointer (likely a string or array struct)
-                    if LLVMGetTypeKind(arg_type) == inkwell::llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
-                        // For string/array struct, print the pointer part (i8*)
-                        let loaded_ptr = LLVMBuildExtractValue(self.builder, arg_val, 0, b"ptr_field\0".as_ptr() as *const _);
-                        
-                        // Cast i64* to i8* for %s format
-                        let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
-                        let casted_ptr = LLVMBuildBitCast(self.builder, loaded_ptr, i8_ptr_type, b"casted_ptr\0".as_ptr() as *const _);
-                        
-                        (LLVMBuildGlobalStringPtr(self.builder, b"%s\n\0".as_ptr() as *const _, b".str_format\0".as_ptr() as *const _), casted_ptr)
-                    } else { // Assume integer for now
-                        (LLVMBuildGlobalStringPtr(self.builder, b"%lld\n\0".as_ptr() as *const _, b".int_format\0".as_ptr() as *const _), arg_val)
-                    }
-                };
-
-                let mut printf_args = [format_str_ptr, val_to_print];
-                unsafe {
-                    let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
-                    let printf_type = LLVMFunctionType(LLVMInt32TypeInContext(self.context), [i8_ptr_type].as_mut_ptr(), 1, 1);
-                    LLVMBuildCall2(self.builder, printf_type, self.printf_func, printf_args.as_mut_ptr(), 2, b"printf_call\0".as_ptr() as *const _);
-                    Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)) // print returns 0
-                }
-            }
-            "len" => {
-                if args_expr.len() != 1 {
-                    return Err("len() takes exactly one argument".to_string());
-                }
-                let arg_val = self.compile_expression(args_expr[0].clone())?;
-                
-                unsafe {
-                    let arg_type = LLVMTypeOf(arg_val);
-                    if LLVMGetTypeKind(arg_type) == inkwell::llvm_sys::LLVMTypeKind::LLVMStructTypeKind && arg_type == self.array_type {
-                        // Directly extract the length field from the struct value
-                        Ok(LLVMBuildExtractValue(self.builder, arg_val, 1, b"len_val\0".as_ptr() as *const _))
-                    } else {
-                        Err("len() argument must be a string or an array".to_string())
-                    }
-                }
-            }
-            "read_line" => {
-                if !args_expr.is_empty() {
-                    return Err("read_line() takes no arguments".to_string());
-                }
-                unsafe {
-                    let i8_type = LLVMInt8TypeInContext(self.context);
-                    let i32_type = LLVMInt32TypeInContext(self.context);
-                    let buffer_size = 2048; // Max input size
-                    let buffer_size_val = LLVMConstInt(i32_type, buffer_size as u64, 0);
-
-                    // Allocate buffer on the stack
-                    let buffer = LLVMBuildArrayAlloca(self.builder, i8_type, buffer_size_val, b"read_line_buf\0".as_ptr() as *const _);
-
-                    // Load stdin
-                    let stdin = LLVMBuildLoad2(self.builder, LLVMPointerType(LLVMInt8TypeInContext(self.context), 0), self.stdin_ptr, b"stdin\0".as_ptr() as *const _);
-
-                    // Call fgets
-                    let mut fgets_args = [buffer, buffer_size_val, stdin];
-                    LLVMBuildCall2(self.builder, self.fgets_type, self.fgets_func, fgets_args.as_mut_ptr(), 3, b"fgets_call\0".as_ptr() as *const _);
-
-                    // Call strlen to get the actual length
-                    let mut strlen_args = [buffer];
-                    let string_len = LLVMBuildCall2(self.builder, self.strlen_type, self.strlen_func, strlen_args.as_mut_ptr(), 1, b"strlen_call\0".as_ptr() as *const _);
-
-                    // Create the Fystan string struct
-                    let string_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"read_line_struct_ptr\0".as_ptr() as *const _);
-                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 0, b".ptr_field\0".as_ptr() as *const _);
-                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, string_struct_ptr, 1, b".len_field\0".as_ptr() as *const _);
-
-                    LLVMBuildStore(self.builder, buffer, ptr_field);
-                    LLVMBuildStore(self.builder, string_len, len_field);
-
-                    Ok(LLVMBuildLoad2(self.builder, self.array_type, string_struct_ptr, b".loaded_read_line_struct\0".as_ptr() as *const _))
-                }
-            }
-             "range" => {
-                 if args_expr.len() < 1 || args_expr.len() > 3 {
-                     return Err("range() takes 1 to 3 arguments".to_string());
-                 }
-
-                 unsafe {
-                     let i64_type = LLVMInt64TypeInContext(self.context);
-
-                     // Compile arguments
-                     let start_val = if args_expr.len() >= 2 {
-                         self.compile_expression(args_expr[0].clone())?
-                     } else {
-                         LLVMConstInt(i64_type, 0, 0)
-                     };
-
-                     let stop_val = if args_expr.len() >= 2 {
-                         self.compile_expression(args_expr[1].clone())?
-                     } else {
-                         self.compile_expression(args_expr[0].clone())?
-                     };
-
-                     let step_val = if args_expr.len() == 3 {
-                         self.compile_expression(args_expr[2].clone())?
-                     } else {
-                         LLVMConstInt(i64_type, 1, 0)
-                     };
-
-                     // Calculate the length of the range
-                     let length_val = LLVMBuildSDiv(self.builder, LLVMBuildSub(self.builder, stop_val, start_val, b"range_sub\0".as_ptr() as *const _), step_val, b"range_div\0".as_ptr() as *const _);
-
-                     // Allocate array for the range values
-                     let array_elements_ptr = LLVMBuildArrayMalloc(self.builder, i64_type, length_val, b"range_array\0".as_ptr() as *const _);
-
-                     // Generate the range values
-                     let mut index_val = LLVMConstInt(i64_type, 0, 0);
-                     let mut current_val = start_val;
-
-                     let loop_cond_bb = LLVMAppendBasicBlockInContext(self.context, self.function.unwrap(), b"range_loop_cond\0".as_ptr() as *const _);
-                     let loop_body_bb = LLVMAppendBasicBlockInContext(self.context, self.function.unwrap(), b"range_loop_body\0".as_ptr() as *const _);
-                     let loop_end_bb = LLVMAppendBasicBlockInContext(self.context, self.function.unwrap(), b"range_loop_end\0".as_ptr() as *const _);
-
-                     LLVMBuildBr(self.builder, loop_cond_bb);
-
-                     // Condition block
-                     LLVMPositionBuilderAtEnd(self.builder, loop_cond_bb);
-                     let cond_val = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSLT, index_val, length_val, b"range_cond\0".as_ptr() as *const _);
-                     LLVMBuildCondBr(self.builder, cond_val, loop_body_bb, loop_end_bb);
-
-                     // Body block
-                     LLVMPositionBuilderAtEnd(self.builder, loop_body_bb);
-                     let element_ptr = LLVMBuildGEP2(self.builder, i64_type, array_elements_ptr, &mut index_val, 1, b"range_element_ptr\0".as_ptr() as *const _);
-                     LLVMBuildStore(self.builder, current_val, element_ptr);
-
-                     // Increment index and current value
-                     index_val = LLVMBuildAdd(self.builder, index_val, LLVMConstInt(i64_type, 1, 0), b"range_index_inc\0".as_ptr() as *const _);
-                     current_val = LLVMBuildAdd(self.builder, current_val, step_val, b"range_val_inc\0".as_ptr() as *const _);
-                     LLVMBuildBr(self.builder, loop_cond_bb);
-
-                     // End block
-                     LLVMPositionBuilderAtEnd(self.builder, loop_end_bb);
-
-                     // Create the array struct
-                     let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"range_struct_ptr\0".as_ptr() as *const _);
-                     let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"range_ptr_field\0".as_ptr() as *const _);
-                     let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"range_len_field\0".as_ptr() as *const _);
-
-                     LLVMBuildStore(self.builder, array_elements_ptr, ptr_field);
-                     LLVMBuildStore(self.builder, length_val, len_field);
-
-                     Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_range_struct\0".as_ptr() as *const _))
-                 }
-              }
-            }
-            "str" => {
-                if args_expr.len() != 1 {
-                    return Err("str() takes exactly one argument".to_string());
-                }
-                // For now, just return the argument as is
-                self.compile_expression(args_expr[0].clone())
-            }
-            "int" => {
-                if args_expr.len() != 1 {
-                    return Err("int() takes exactly one argument".to_string());
-                }
-                // For now, just return the argument as is (assumes integer conversion is handled elsewhere)
-                self.compile_expression(args_expr[0].clone())
-            }
-            "bool" => {
-                if args_expr.len() != 1 {
-                    return Err("bool() takes exactly one argument".to_string());
-                }
-                // For now, just return the argument as is (assumes boolean conversion is handled elsewhere)
-                self.compile_expression(args_expr[0].clone())
-            }
-            "float" => {
-                if args_expr.len() != 1 {
-                    return Err("float() takes exactly one argument".to_string());
-                }
-                // For now, just return the argument as is (assumes float conversion is handled elsewhere)
-                self.compile_expression(args_expr[0].clone())
-            }
-            "list" => {
-                if args_expr.len() > 1 {
-                    return Err("list() takes 0 or 1 arguments".to_string());
-                }
-                
-                // Create an empty list/array
-                unsafe {
-                    let i64_type = LLVMInt64TypeInContext(self.context);
-                    let array_len_val = LLVMConstInt(i64_type, 0, 0); // Empty list
-
-                    // Create the array struct { i64*, i64 }
-                    let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"empty_list_struct_ptr\0".as_ptr() as *const _);
-                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
-                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
-
-                    LLVMBuildStore(self.builder, LLVMConstNull(LLVMPointerType(i64_type, 0)), ptr_field);
-                    LLVMBuildStore(self.builder, array_len_val, len_field);
-
-                    Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_empty_list_struct\0".as_ptr() as *const _))
-                }
-            }
-            "tuple" => {
-                if args_expr.len() > 1 {
-                    return Err("tuple() takes 0 or 1 arguments".to_string());
-                }
-                
-                // For now, treat tuples the same as lists
-                // Create an empty list/array as tuple placeholder
-                unsafe {
-                    let i64_type = LLVMInt64TypeInContext(self.context);
-                    let array_len_val = LLVMConstInt(i64_type, 0, 0); // Empty tuple
-
-                    // Create the array struct { i64*, i64 }
-                    let array_struct_ptr = LLVMBuildAlloca(self.builder, self.array_type, b"empty_tuple_struct_ptr\0".as_ptr() as *const _);
-                    let ptr_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 0, b"ptr_field\0".as_ptr() as *const _);
-                    let len_field = LLVMBuildStructGEP2(self.builder, self.array_type, array_struct_ptr, 1, b"len_field\0".as_ptr() as *const _);
-
-                    LLVMBuildStore(self.builder, LLVMConstNull(LLVMPointerType(i64_type, 0)), ptr_field);
-                    LLVMBuildStore(self.builder, array_len_val, len_field);
-
-                    Ok(LLVMBuildLoad2(self.builder, self.array_type, array_struct_ptr, b"loaded_empty_tuple_struct\0".as_ptr() as *const _))
-                }
-            }
-            _ => Err(format!("Unknown builtin function: {}", builtin.name))
-        }
-    }
-
-    fn compile_infix_expression(&mut self, left_expr: ExpressionEnum, op: InfixOperator, right_expr: ExpressionEnum) -> Result<LLVMValueRef, String> {
-        let left = self.compile_expression(left_expr)?;
-        let right = self.compile_expression(right_expr)?;
-
-        unsafe {
-            match op {
-                InfixOperator::Plus => Ok(LLVMBuildAdd(self.builder, left, right, b"addtmp\0".as_ptr() as *const _)),
-                InfixOperator::Minus => Ok(LLVMBuildSub(self.builder, left, right, b"subtmp\0".as_ptr() as *const _)),
-                InfixOperator::Multiply => Ok(LLVMBuildMul(self.builder, left, right, b"multmp\0".as_ptr() as *const _)),
-                InfixOperator::Divide => Ok(LLVMBuildSDiv(self.builder, left, right, b"divtmp\0".as_ptr() as *const _)),
-                InfixOperator::Mod => Ok(LLVMBuildSRem(self.builder, left, right, b"remtmp\0".as_ptr() as *const _)),
-                InfixOperator::Eq => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"eqtmp\0".as_ptr() as *const _)),
-                InfixOperator::NotEq => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"neqtmp\0".as_ptr() as *const _)),
-                InfixOperator::Is => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntEQ, left, right, b"istmp\0".as_ptr() as *const _)),
-                InfixOperator::IsNot => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, right, b"isnottmp\0".as_ptr() as *const _)),
-                InfixOperator::Lt => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSLT, left, right, b"lttmp\0".as_ptr() as *const _)),
-                InfixOperator::Gt => Ok(LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntSGT, left, right, b"gttmp\0".as_ptr() as *const _)),
-                InfixOperator::And => {
-                    let current_block = LLVMGetInsertBlock(self.builder);
-                    let function = LLVMGetBasicBlockParent(current_block);
-                    let rhs_bb = LLVMAppendBasicBlockInContext(self.context, function, b"and_rhs\0".as_ptr() as *const _);
-                    let merge_bb = LLVMAppendBasicBlockInContext(self.context, function, b"and_merge\0".as_ptr() as *const _);
-
-                    let left_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"left_bool\0".as_ptr() as *const _);
-                    LLVMBuildCondBr(self.builder, left_bool, rhs_bb, merge_bb);
-
-                    LLVMPositionBuilderAtEnd(self.builder, rhs_bb);
-                    let right_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, right, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"right_bool\0".as_ptr() as *const _);
-                    LLVMBuildBr(self.builder, merge_bb);
-
-                    LLVMPositionBuilderAtEnd(self.builder, merge_bb);
-                    let phi = LLVMBuildPhi(self.builder, LLVMInt1TypeInContext(self.context), b"and_res\0".as_ptr() as *const _);
-                    let mut incoming_values = [LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0), right_bool];
-                    let mut incoming_blocks = [current_block, rhs_bb];
-                    LLVMAddIncoming(phi, incoming_values.as_mut_ptr(), incoming_blocks.as_mut_ptr(), 2);
-                    Ok(LLVMBuildZExt(self.builder, phi, LLVMInt64TypeInContext(self.context), b"and_ext\0".as_ptr() as *const _))
-                }
-                InfixOperator::Or => {
-                    let current_block = LLVMGetInsertBlock(self.builder);
-                    let function = LLVMGetBasicBlockParent(current_block);
-                    let rhs_bb = LLVMAppendBasicBlockInContext(self.context, function, b"or_rhs\0".as_ptr() as *const _);
-                    let merge_bb = LLVMAppendBasicBlockInContext(self.context, function, b"or_merge\0".as_ptr() as *const _);
-
-                    let left_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, left, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"left_bool\0".as_ptr() as *const _);
-                    LLVMBuildCondBr(self.builder, left_bool, merge_bb, rhs_bb);
-
-                    LLVMPositionBuilderAtEnd(self.builder, rhs_bb);
-                    let right_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, right, LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0), b"right_bool\0".as_ptr() as *const _);
-                    LLVMBuildBr(self.builder, merge_bb);
-
-                    LLVMPositionBuilderAtEnd(self.builder, merge_bb);
-                    let phi = LLVMBuildPhi(self.builder, LLVMInt1TypeInContext(self.context), b"or_res\0".as_ptr() as *const _);
-                    let mut incoming_values = [LLVMConstInt(LLVMInt1TypeInContext(self.context), 1, 0), right_bool];
-                    let mut incoming_blocks = [current_block, rhs_bb];
-                    LLVMAddIncoming(phi, incoming_values.as_mut_ptr(), incoming_blocks.as_mut_ptr(), 2);
-                    Ok(LLVMBuildZExt(self.builder, phi, LLVMInt64TypeInContext(self.context), b"or_ext\0".as_ptr() as *const _))
-                }
-                _ => Err(format!("Infix operator {:?} not implemented", op)),
-            }
-        }
-    }
-
-    fn compile_if_expression(&mut self, condition: ExpressionEnum, consequence: BlockStatement, alternative: Option<BlockStatement>) -> Result<LLVMValueRef, String> {
-        unsafe {
-            let cond = self.compile_expression(condition)?;
-            
-            // Handle truthiness: if the condition is not already a boolean (i1), compare it to zero.
-            let cond_val = {
-                let cond_type = LLVMTypeOf(cond);
-                if cond_type == LLVMInt1TypeInContext(self.context) {
-                    cond // Already a boolean
-                } else {
-                    let zero = LLVMConstInt(cond_type, 0, 0);
-                    LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, cond, zero, b"ifcond\0".as_ptr() as *const _)
-                }
-            };
-
-            let function = self.function.ok_or("If expression not in a function")?;
-
-            let then_bb = LLVMAppendBasicBlockInContext(self.context, function, b"then\0".as_ptr() as *const _);
-            let else_bb = LLVMAppendBasicBlockInContext(self.context, function, b"else\0".as_ptr() as *const _);
-            let merge_bb = LLVMAppendBasicBlockInContext(self.context, function, b"ifcont\0".as_ptr() as *const _);
-
-            LLVMBuildCondBr(self.builder, cond_val, then_bb, else_bb);
-
-            // Build then block
-            LLVMPositionBuilderAtEnd(self.builder, then_bb);
-            let then_val = self.compile_block_statement(consequence)?;
-            LLVMBuildBr(self.builder, merge_bb);
-            let then_bb = LLVMGetInsertBlock(self.builder);
-
-            // Build else block
-            LLVMPositionBuilderAtEnd(self.builder, else_bb);
-            let else_val = if let Some(alt) = alternative {
-                self.compile_block_statement(alt)?
-            } else {
-                LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0)
-            };
-            LLVMBuildBr(self.builder, merge_bb);
-            let else_bb = LLVMGetInsertBlock(self.builder);
-
-            // Build merge block
-            LLVMPositionBuilderAtEnd(self.builder, merge_bb);
-            let phi = LLVMBuildPhi(self.builder, LLVMInt64TypeInContext(self.context), b"iftmp\0".as_ptr() as *const _);
-            let mut values = [then_val, else_val];
-            let mut blocks = [then_bb, else_bb];
-            LLVMAddIncoming(phi, values.as_mut_ptr(), blocks.as_mut_ptr(), 2);
-
-            Ok(phi)
-        }
-    }
-
-    fn compile_while_expression(&mut self, condition: ExpressionEnum, body: BlockStatement) -> Result<LLVMValueRef, String> {
-        unsafe {
-            let function = self.function.ok_or("While loop not in a function")?;
-
-            let cond_bb = LLVMAppendBasicBlockInContext(self.context, function, b"loop_cond\0".as_ptr() as *const _);
-            let body_bb = LLVMAppendBasicBlockInContext(self.context, function, b"loop_body\0".as_ptr() as *const _);
-            let after_bb = LLVMAppendBasicBlockInContext(self.context, function, b"after_loop\0".as_ptr() as *const _);
-
-            self.loop_contexts.push(LoopContext { cond_bb, after_bb });
-
-            LLVMBuildBr(self.builder, cond_bb);
-
-            // Condition block
-            LLVMPositionBuilderAtEnd(self.builder, cond_bb);
-            let cond_val = self.compile_expression(condition)?;
-            let zero = LLVMConstInt(LLVMInt1TypeInContext(self.context), 0, 0);
-            let cond_bool = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntNE, cond_val, zero, b"loopcond\0".as_ptr() as *const _);
-            LLVMBuildCondBr(self.builder, cond_bool, body_bb, after_bb);
-
-            // Body block
-            LLVMPositionBuilderAtEnd(self.builder, body_bb);
-            self.compile_block_statement(body)?;
-            LLVMBuildBr(self.builder, cond_bb); // Jump back to condition
-
-            // After loop block
-            LLVMPositionBuilderAtEnd(self.builder, after_bb);
-            
-            self.loop_contexts.pop();
-
-            Ok(LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0))
-        }
-    }
-
-    fn compile_for_expression(&mut self, for_expr: ForExpression) -> Result<LLVMValueRef, String> {
-        unsafe {
-            let function = self.function.ok_or("For loop not in a function")?;
-
-            // Compile the iterable expression
-            let iterable_expr = *for_expr.iterable;
-            let array_struct_val = self.compile_expression(iterable_expr)?;
-
-            // Extract elements pointer and length from the array struct
-            let elements_ptr = LLVMBuildExtractValue(self.builder, array_struct_val, 0, b"elements_ptr\0".as_ptr() as *const _);
-            let array_len_val = LLVMBuildExtractValue(self.builder, array_struct_val, 1, b"array_len_val\0".as_ptr() as *const _);
-
-            let i64_type = LLVMInt64TypeInContext(self.context);
-
-            // Create allocas for index and loop variable *before* the loop.
-            let index_alloca = self.create_entry_block_alloca("__for_index", i64_type);
-            let element_alloca = self.create_entry_block_alloca(&for_expr.element.value, i64_type);
-
-            // Initialize index to 0
-            let zero = LLVMConstInt(i64_type, 0, 0);
-            LLVMBuildStore(self.builder, zero, index_alloca);
-
-            // Create basic blocks for the loop
-            let cond_bb = LLVMAppendBasicBlockInContext(self.context, function, b"for_cond\0".as_ptr() as *const _);
-            let body_bb = LLVMAppendBasicBlockInContext(self.context, function, b"for_body\0".as_ptr() as *const _);
-            let inc_bb = LLVMAppendBasicBlockInContext(self.context, function, b"for_inc\0".as_ptr() as *const _);
-            let after_bb = LLVMAppendBasicBlockInContext(self.context, function, b"after_for\0".as_ptr() as *const _);
-
-            self.loop_contexts.push(LoopContext { cond_bb: inc_bb, after_bb });
-
-            LLVMBuildBr(self.builder, cond_bb);
-
-            // Condition block: check if index < length
-            LLVMPositionBuilderAtEnd(self.builder, cond_bb);
-            let index = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx\0".as_ptr() as *const _);
-            let cond = LLVMBuildICmp(self.builder, inkwell::llvm_sys::LLVMIntPredicate::LLVMIntULT, index, array_len_val, b"forcond\0".as_ptr() as *const _);
-            LLVMBuildCondBr(self.builder, cond, body_bb, after_bb);
-
-            // Body block: get element and execute body
-            LLVMPositionBuilderAtEnd(self.builder, body_bb);
-            let mut index_in_body = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx_body\0".as_ptr() as *const _);
-            
-            let element_ptr = LLVMBuildGEP2(self.builder, i64_type, elements_ptr, &mut index_in_body, 1, b"element_ptr\0".as_ptr() as *const _);
-            let element_val = LLVMBuildLoad2(self.builder, i64_type, element_ptr, b"loaded_element\0".as_ptr() as *const _);
-            LLVMBuildStore(self.builder, element_val, element_alloca);
-            
-            self.variables.insert(for_expr.element.value.clone(), element_alloca);
-            self.compile_block_statement(for_expr.body)?;
-            self.variables.remove(&for_expr.element.value);
-
-            LLVMBuildBr(self.builder, inc_bb);
-
-            // Increment block: index++
-            LLVMPositionBuilderAtEnd(self.builder, inc_bb);
-            let index_to_inc = LLVMBuildLoad2(self.builder, i64_type, index_alloca, b"load_idx_inc\0".as_ptr() as *const _);
-            let one = LLVMConstInt(i64_type, 1, 0);
-            let next_index = LLVMBuildAdd(self.builder, index_to_inc, one, b"next_idx\0".as_ptr() as *const _);
-            LLVMBuildStore(self.builder, next_index, index_alloca);
-            LLVMBuildBr(self.builder, cond_bb);
-
-            // After loop block
-            LLVMPositionBuilderAtEnd(self.builder, after_bb);
-            self.loop_contexts.pop();
-
-            Ok(LLVMConstInt(i64_type, 0, 0))
-        }
-    }
-
-     fn compile_block_statement(&mut self, block: BlockStatement) -> Result<LLVMValueRef, String> {
-         let mut result = ptr::null_mut();
-         for stmt in block.statements {
-             result = self.compile_statement(stmt)?;
-         }
-         Ok(result)
-     }
-
-     fn compile_hash_literal(&mut self, hash_lit: crate::ast::HashLiteral) -> Result<LLVMValueRef, String> {
-         unsafe {
-             let i64_type = LLVMInt64TypeInContext(self.context);
-             let i8_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
-
-             // Create struct type for hashmap: { i8**, i64*, i64 } (keys, values, size)
-             let hash_struct_types = [i8_ptr_type, i8_ptr_type, i64_type];
-             let hash_type = LLVMStructTypeInContext(self.context, hash_struct_types.as_ptr() as *mut _, 3, 0);
-
-             // Allocate the hashmap struct
-             let hash_struct_ptr = LLVMBuildAlloca(self.builder, hash_type, b"hash_struct_ptr\0".as_ptr() as *const _);
-
-             let num_pairs = hash_lit.pairs.len() as u64;
-             let num_pairs_val = LLVMConstInt(i64_type, num_pairs, 0);
-
-             // Allocate arrays for keys and values
-             let keys_array_ptr = LLVMBuildArrayMalloc(self.builder, i8_ptr_type, num_pairs_val, b"keys_array\0".as_ptr() as *const _);
-             let values_array_ptr = LLVMBuildArrayMalloc(self.builder, i8_ptr_type, num_pairs_val, b"values_array\0".as_ptr() as *const _);
-
-             // Store keys and values
-             for (i, (key, value_expr)) in hash_lit.pairs.iter().enumerate() {
-                 let key_cstr = CString::new(key.as_str()).unwrap();
-                 let key_global = LLVMBuildGlobalStringPtr(self.builder, key_cstr.as_ptr(), b"key_str\0".as_ptr() as *const _);
-                 let value_val = self.compile_expression(value_expr.clone())?;
-
-                 let mut index_val = LLVMConstInt(i64_type, i as u64, 0);
-
-                 let key_ptr = LLVMBuildGEP2(self.builder, i8_ptr_type, keys_array_ptr, &mut index_val, 1, b"key_ptr\0".as_ptr() as *const _);
-                 let value_ptr = LLVMBuildGEP2(self.builder, i8_ptr_type, values_array_ptr, &mut index_val, 1, b"value_ptr\0".as_ptr() as *const _);
-
-                 LLVMBuildStore(self.builder, key_global, key_ptr);
-                 LLVMBuildStore(self.builder, value_val, value_ptr);
-             }
-
-             // Store pointers and size in the struct
-             let keys_field = LLVMBuildStructGEP2(self.builder, hash_type, hash_struct_ptr, 0, b"keys_field\0".as_ptr() as *const _);
-             let values_field = LLVMBuildStructGEP2(self.builder, hash_type, hash_struct_ptr, 1, b"values_field\0".as_ptr() as *const _);
-             let size_field = LLVMBuildStructGEP2(self.builder, hash_type, hash_struct_ptr, 2, b"size_field\0".as_ptr() as *const _);
-
-             LLVMBuildStore(self.builder, keys_array_ptr, keys_field);
-             LLVMBuildStore(self.builder, values_array_ptr, values_field);
-             LLVMBuildStore(self.builder, num_pairs_val, size_field);
-
-             Ok(LLVMBuildLoad2(self.builder, hash_type, hash_struct_ptr, b"loaded_hash_struct\0".as_ptr() as *const _))
-         }
-     }
-
-    fn create_entry_block_alloca(&mut self, name: &str, ty: LLVMTypeRef) -> LLVMValueRef {
-        unsafe {
-            let function = self.function.unwrap();
-            let entry = LLVMGetEntryBasicBlock(function);
-            let first_instruction = LLVMGetFirstInstruction(entry);
-
-            if first_instruction.is_null() {
-                LLVMPositionBuilderAtEnd(self.alloca_builder, entry);
-            } else {
-                LLVMPositionBuilderBefore(self.alloca_builder, first_instruction);
-            }
-
-            let c_name = CString::new(name).unwrap();
-            LLVMBuildAlloca(self.alloca_builder, ty, c_name.as_ptr())
-        }
-    }
-    
-    fn get_or_create_function(&self, name: &CStr, num_params: usize) -> LLVMValueRef {
-        unsafe {
-            let mut function = LLVMGetNamedFunction(self.module, name.as_ptr());
-            if function.is_null() {
-                let mut param_types = vec![LLVMInt64TypeInContext(self.context); num_params];
-                let function_type = LLVMFunctionType(LLVMInt64TypeInContext(self.context), param_types.as_mut_ptr(), num_params as u32, 0);
-                function = LLVMAddFunction(self.module, name.as_ptr(), function_type);
-            }
-            function
-        }
-    }
-
-    pub fn setup_test_main_function(&mut self) {
-        unsafe {
-            let main_type = LLVMFunctionType(LLVMInt64TypeInContext(self.context), [].as_mut_ptr(), 0, 0);
-            let main_func = LLVMAddFunction(self.module, b"main\0".as_ptr() as *const _, main_type);
-            let entry = LLVMAppendBasicBlockInContext(self.context, main_func, b"entry\0".as_ptr() as *const _);
-            LLVMPositionBuilderAtEnd(self.builder, entry);
-            self.function = Some(main_func);
-        }
-    }
-
-    fn write_to_file(&self, target_triple: &str, filename: &str) -> Result<(), String> {
-        unsafe {
-            LLVM_InitializeAllTargets();
-            LLVM_InitializeAllTargetInfos();
-            LLVM_InitializeAllTargetMCs();
-            LLVM_InitializeAllAsmParsers();
-            LLVM_InitializeAllAsmPrinters();
-
-            let target_triple_c = CString::new(target_triple).unwrap();
-            let mut target = ptr::null_mut();
-            let mut error = ptr::null_mut();
-
-            if LLVMGetTargetFromTriple(target_triple_c.as_ptr(), &mut target, &mut error) != 0 {
-                let err_msg = CStr::from_ptr(error).to_string_lossy().into_owned();
-                LLVMDisposeMessage(error);
-                return Err(format!("Failed to get target: {}", err_msg));
-            }
-
-            let cpu = CString::new("generic").unwrap();
-            let features = CString::new("").unwrap();
-            let target_machine = LLVMCreateTargetMachine(
-                target,
-                target_triple_c.as_ptr(),
-                cpu.as_ptr(),
-                features.as_ptr(),
-                LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
-                LLVMRelocMode::LLVMRelocPIC,
-                LLVMCodeModel::LLVMCodeModelDefault,
-            );
-            if target_machine.is_null() {
-                return Err("Failed to create target machine".to_string());
-            }
-
-            let filename_c = CString::new(filename).unwrap();
-            let mut error = ptr::null_mut();
-            if LLVMTargetMachineEmitToFile(
-                target_machine,
-                self.module,
-                filename_c.as_ptr() as *mut c_char,
-                inkwell::llvm_sys::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
-                &mut error,
-            ) != 0
-            {
-                let err_msg = CStr::from_ptr(error).to_string_lossy().into_owned();
-                LLVMDisposeMessage(error);
-                return Err(format!("Failed to emit object file: {}", err_msg));
-            }
-
-            Ok(())
-        }
+        
+        // Remove the scope
+        self.scopes.pop();
+        
+        Ok(result)
     }
 }

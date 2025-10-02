@@ -1,0 +1,39 @@
+# Basic Fystan test - arithmetic, assignments, and functions
+x = 10
+y = 5
+sum_result = x + y
+print("Sum: ")
+print(sum_result)
+
+def calculate(a, b):
+    result = a * b
+    return result
+
+product = calculate(6, 7)
+print("Product: ")
+print(product)
+
+text = "Testing Fystan"
+text_len = len(text)
+print("Text length: ")
+print(text_len)
+
+for i in range(1, 3):
+    print(i)
+
+value = 15
+if value > 10:
+    print("Value is greater than 10")
+else:
+    print("Value is 10 or less")
+
+numbers = [100, 200, 300]
+count = len(numbers)
+print("Array count: ")
+print(count)
+
+final_result = (x - y) + (product / 2)
+print("Final calculation: ")
+print(final_result)
+
+print("Basic test completed successfully!")

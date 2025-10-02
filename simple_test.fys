@@ -1,0 +1,10 @@
+x = 5
+y = 10
+result = x + y
+print(result)
+
+def simple_func():
+    return 42
+
+func_result = simple_func()
+print(func_result)

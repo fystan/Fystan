@@ -1,0 +1,73 @@
+# Complex Fystan test program using all language features correctly
+# Note: Fystan uses Python-style indentation syntax
+
+def factorial(n):
+    if n <= 1:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+def is_even(x):
+    if x % 2 == 0:
+        return 1
+    else:
+        return 0
+
+# Test basic assignments
+x = 10
+y = 20
+result = x + y
+print(result)
+
+# Test string operations
+greeting = "Hello, "
+name = "Fystan!"
+full_greeting = greeting + name
+print(full_greeting)
+
+# Test conditional
+if x < y:
+    print("x is less than y")
+else:
+    print("x is greater than or equal to y")
+
+# Test function call
+fact_val = factorial(5)
+print(fact_val)
+
+# Test boolean operations
+a = 1
+b = 0
+and_result = a and b
+or_result = a or b
+not_result = not b
+print(and_result)
+print(or_result)
+print(not_result)
+
+# Test loops and range
+print("Numbers in range:")
+for i in range(1, 5):
+    print(i)
+
+# Test length
+test_array = [1, 2, 3, 4, 5]
+array_len = len(test_array)
+print(array_len)
+
+# Test nested conditionals and loops
+counter = 0
+while counter < 3:
+    if is_even(counter):
+        print("Even number:")
+        print(counter)
+    else:
+        print("Odd number:")
+        print(counter)
+    counter = counter + 1
+
+# Test complex arithmetic
+complex_result = (x * y + factorial(4)) / (x - 8)
+print(complex_result)
+
+print("Complex test completed successfully!")

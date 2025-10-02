@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand};
 use fystan::codegen::Compiler;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -20,16 +19,12 @@ enum Commands {
 #[derive(Parser, Debug)]
 #[command(disable_help_flag = true)]
 struct BuildArgs {
-    /// The target triple to compile for (e.g., "windows:amd64")
-    #[arg(short, long)]
-    target: String,
-
     /// The source file to compile
     source_path: String,
 
-    /// The output file name
+    /// The output executable name
     #[arg(short, long)]
-    output: Option<String>,
+    output: String,
 }
 
 fn main() {
@@ -45,104 +40,39 @@ fn main() {
                 }
             };
 
-            // 1. Determine output path for the final executable
-            let output_path = args.output.map(PathBuf::from).unwrap_or_else(|| {
-                let path = Path::new(&args.source_path);
-                path.with_extension("")
-            });
-
-            // 2. Determine output path for the object file
-            let obj_path = output_path.with_extension("o");
-
-            // 3. Get the target triple
-            let target_triple = match map_target_to_triple(&args.target) {
-                Some(triple) => triple,
-                None => {
-                    eprintln!("Error: Unsupported target '{}'", args.target);
-                    std::process::exit(1);
-                }
+            // Ensure the output has executable extension if on Windows
+            let output_path = if cfg!(windows) && !args.output.ends_with(".exe") {
+                format!("{}.exe", args.output)
+            } else {
+                args.output
             };
 
-            // 4. Compile to object file
-            if let Err(e) =
-                Compiler::run_from_source(&source_code, target_triple, obj_path.to_str().unwrap())
-            {
+            if let Err(e) = Compiler::run_from_source(&source_code, &output_path) {
                 eprintln!("Compilation Error: {}", e);
-                let _ = fs::remove_file(&obj_path); // Clean up on failure
                 std::process::exit(1);
             }
 
-            // 5. Link the object file into an executable
-            let linker_output = Command::new("clang")
-                .arg(&obj_path)
-                .arg("-o")
-                .arg(&output_path)
-                .output();
-
-            // 6. Clean up the object file
-            let _ = fs::remove_file(&obj_path);
-
-            match linker_output {
-                Ok(output) => {
-                    if !output.status.success() {
-                        eprintln!(
-                            "Linker error:\n{}",
-                            String::from_utf8_lossy(&output.stderr)
-                        );
-                        std::process::exit(1);
-                    }
-                    println!(
-                        "Build successful! Executable written to {}",
-                        output_path.to_str().unwrap()
-                    );
-                }
-                Err(e) => {
-                    eprintln!("Failed to run linker: {}", e);
-                    std::process::exit(1);
-                }
-            }
+            println!(
+                "Build successful! Executable written to {}",
+                output_path
+            );
         }
-    }
-}
-
-fn map_target_to_triple(target: &str) -> Option<&'static str> {
-    match target {
-        "windows:amd64" => Some("x86_64-pc-windows-msvc"),
-        "linux:amd64" => Some("x86_64-unknown-linux-gnu"),
-        "darwin:amd64" => Some("x86_64-apple-darwin"),
-        "android:arm64" => Some("aarch64-linux-android"),
-        "windows:x86" => Some("i686-pc-windows-msvc"),
-        "linux:x86" => Some("i686-unknown-linux-gnu"),
-        "linux:arm" => Some("armv7-unknown-linux-gnueabihf"),
-        "linux:arm64" => Some("aarch64-unknown-linux-gnu"),
-        "darwin:arm64" => Some("aarch64-apple-darwin"),
-        "wasm:wasm32" => Some("wasm32-unknown-unknown"),
-        _ => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use fystan::codegen::Compiler;
-    use fystan::parser::Parser;
-    use inkwell::llvm_sys as llvm;
 
     fn assert_compiles_ok(fystan_code: &str) {
-        unsafe {
-            let context = llvm::core::LLVMContextCreate();
-            let mut compiler = Compiler::new(context);
-            let l = fystan::lexer::Lexer::new(fystan_code);
-            let mut p = Parser::new(l);
-            let program = p.parse_program();
-            assert!(p.errors().is_empty(), "Parser errors found: {:?}", p.errors());
+        let mut compiler = Compiler::new();
+        let l = fystan::lexer::Lexer::new(fystan_code);
+        let mut p = fystan::parser::Parser::new(l);
+        let program = p.parse_program();
+        assert!(p.errors().is_empty(), "Parser errors found: {:?}", p.errors());
 
-            compiler.setup_test_main_function();
-
-            let result = compiler.compile(program);
-            assert!(result.is_ok(), "Compilation failed: {:?}", result.err());
-            
-            llvm::core::LLVMContextDispose(context);
-        }
+        let result = compiler.compile(program);
+        assert!(result.is_ok(), "Compilation failed: {:?}", result.err());
     }
 
     #[test]
