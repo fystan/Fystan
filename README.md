@@ -9,7 +9,7 @@ It features **safe, efficient memory management** via **CTMM** (Compile Time Mem
 
 ## ✨ Features
 
-- 🔨 **Compiled Language** – Generates native assembly for `x86_64` and `aarch64`, enabling **cross-compilation** to **Windows, macOS, Linux, Android, and WebAssembly (Wasm)**.
+- 🔨 **Compiled Language** – Generates native assembly for `amd64` and `arm64`, enabling **cross-compilation** to **Windows, macOS, Linux, Android, and WebAssembly (Wasm)**.
 - 📝 **Simple, Modern Syntax** – Clean and beginner-friendly
 - 🛡 **Safe Memory Management** – Powered by **CTMM**
 - 📦 **Optimized Binaries** – Small, release-optimized output
@@ -43,9 +43,10 @@ All compiler output and errors are in **English**.
 The `fystan build` command supports cross-compilation to the following `OS:architecture` combinations:
 
 *   `windows:amd64`
+*   `windows:arm64`
 *   `linux:amd64`
-*   `android:arm64`
 *   `linux:arm64`
+*   `android:arm64`
 *   `wasm:wasm64`
 
 ---
