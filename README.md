@@ -1,6 +1,6 @@
 <h1><img src="fystan.ico" width="40" height="40" align="absmiddle"> Fystan</h1>
 
-**Fystan** is a compiled programming language that blends the intuitive syntax of **Python** with the raw performance of **Rust** and **C++**.  
+**Fystan** is a compiled programming language that blends the intuitive syntax of **Python** with the raw performance of **Rust** and **C**.  
 It features **safe, efficient memory management** via **CTMM** (Compile Time Memory Management) and generates **native binaries** for multiple architectures.
 
 > ⚡ Currently in **active development** – new features are added regularly.
@@ -9,7 +9,7 @@ It features **safe, efficient memory management** via **CTMM** (Compile Time Mem
 
 ## ✨ Features
 
-- 🔨 **Compiled Language** – Generates native assembly for `x86_64`, `aarch64`, and `armv7`, enabling **cross-compilation** to **Windows, macOS, Linux, Android, and WebAssembly (Wasm)**.
+- 🔨 **Compiled Language** – Generates native assembly for `x86_64` and `aarch64`, enabling **cross-compilation** to **Windows, macOS, Linux, Android, and WebAssembly (Wasm)**.
 - 📝 **Simple, Modern Syntax** – Clean and beginner-friendly
 - 🛡 **Safe Memory Management** – Powered by **CTMM**
 - 📦 **Optimized Binaries** – Small, release-optimized output
@@ -18,7 +18,7 @@ It features **safe, efficient memory management** via **CTMM** (Compile Time Mem
 
 ## 📦 Installation
 
-Download it on [Fystan Website](https://fystan.dedyn.io).
+Download it on [Fystan Website](https://fystan.qzz.io).
 ---
 
 ## 🖥 Usage
@@ -44,14 +44,9 @@ The `fystan build` command supports cross-compilation to the following `OS:archi
 
 *   `windows:amd64`
 *   `linux:amd64`
-*   `darwin:amd64`
 *   `android:arm64`
-*   `windows:x86`
-*   `linux:x86`
-*   `linux:arm`
 *   `linux:arm64`
-*   `darwin:arm64`
-*   `wasm:wasm32`
+*   `wasm:wasm64`
 
 ---
 
