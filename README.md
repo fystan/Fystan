@@ -47,6 +47,7 @@ The `fystan build` command supports cross-compilation to the following `OS:archi
 *   `linux:amd64`
 *   `linux:arm64`
 *   `android:arm64`
+*   `wasm:wasm32`
 *   `wasm:wasm64`
 
 ---
