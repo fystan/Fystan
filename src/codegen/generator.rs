@@ -1,17 +1,20 @@
 use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
 use crate::codegen::scope::ScopeManager;
+use crate::target::Target;
 use std::fmt::Write;
 
 pub struct Generator {
     scopes: ScopeManager,
     temp_counter: usize,
+    target: Target,
 }
 
 impl Generator {
-    pub fn new() -> Self {
+    pub fn new(target: Target) -> Self {
         Generator {
             scopes: ScopeManager::new(),
             temp_counter: 0,
+            target,
         }
     }
 
