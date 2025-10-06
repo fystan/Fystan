@@ -9,7 +9,7 @@ It features **safe, efficient memory management** via **CTMM** (Compile Time Mem
 
 ## ✨ Features
 
-- 🔨 **Compiled Language** – Generates native assembly for `amd64` and `arm64`, enabling **cross-compilation** to **Windows, macOS, Linux, Android, and WebAssembly (Wasm)**.
+- 🔨 **Compiled Language** – Generates native assembly for `amd64` and `arm64`, enabling **cross-compilation** to **Windows, Linux, Android, and WebAssembly (Wasm)**.
 - 📝 **Simple, Modern Syntax** – Clean and beginner-friendly
 - 🛡 **Safe Memory Management** – Powered by **CTMM**
 - 📦 **Optimized Binaries** – Small, release-optimized output
