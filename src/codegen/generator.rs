@@ -58,7 +58,7 @@ impl Generator {
         let mut params = Vec::new();
 
         for param in &func_lit.parameters {
-            params.push(param.value.clone());
+            params.push(format!("{}: i64", param.value));
         }
 
         self.scopes.push_scope();
