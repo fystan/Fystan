@@ -617,26 +617,21 @@ impl<'a> Parser<'a> {
             return None;
         }
         
-        // After the colon, we expect a newline and then an indented block.
-        // The lexer produces a Newline token. We must consume it.
-        if !self.peek_token_is(&TokenType::Newline) {
-             self.errors.push(format!(
+        if !self.expect_peek(TokenType::Newline) {
+            self.errors.push(format!(
                 "expected newline after function definition, got {:?}",
                 self.peek_token.token_type
             ));
             return None;
         }
-        self.next_token(); // Consume newline
 
-        // Now, the next token should be an Indent token.
-        if !self.peek_token_is(&TokenType::Indent) {
+        if !self.expect_peek(TokenType::Indent) {
             self.errors.push(format!(
                 "expected indented block after function definition, got {:?}",
                 self.peek_token.token_type
             ));
             return None;
         }
-        self.next_token(); // Consume Indent, cur_token is now Indent
 
         let body = self.parse_indented_block_statement()?;
 
