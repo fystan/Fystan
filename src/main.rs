@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use fystan::codegen::Compiler;
+use std::collections::HashMap;
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -24,10 +25,27 @@ struct BuildArgs {
     /// The output executable name
     #[arg(short, long)]
     output: String,
+
+    /// The target to compile for (e.g., windows:amd64)
+    #[arg(long)]
+    target: Option<String>,
+}
+
+fn get_supported_targets() -> HashMap<String, String> {
+    let mut targets = HashMap::new();
+    targets.insert("windows:amd64".to_string(), "x86_64-pc-windows-msvc".to_string());
+    targets.insert("windows:arm64".to_string(), "aarch64-pc-windows-msvc".to_string());
+    targets.insert("linux:amd64".to_string(), "x86_64-unknown-linux-gnu".to_string());
+    targets.insert("linux:arm64".to_string(), "aarch64-unknown-linux-gnu".to_string());
+    targets.insert("android:arm64".to_string(), "aarch64-linux-android".to_string());
+    targets.insert("wasm:wasm32".to_string(), "wasm32-unknown-unknown".to_string());
+    targets.insert("wasm:wasm64".to_string(), "wasm64-unknown-unknown".to_string());
+    targets
 }
 
 fn main() {
     let cli = Cli::parse();
+    let supported_targets = get_supported_targets();
 
     match cli.command {
         Commands::Build(args) => {
@@ -47,13 +65,26 @@ fn main() {
                 }
             };
 
-            let output_path = if cfg!(windows) && !args.output.ends_with(".exe") {
+            let target_triple = match &args.target {
+                Some(target_str) => {
+                    if !supported_targets.contains_key(target_str) {
+                        eprintln!("Error: Unsupported target '{}'.", target_str);
+                        eprintln!("Supported targets are: {}", supported_targets.keys().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+                        std::process::exit(1);
+                    }
+                    supported_targets.get(target_str).cloned()
+                }
+                None => None,
+            };
+
+            let is_windows_target = target_triple.as_deref().map_or(cfg!(windows), |t| t.contains("windows"));
+
+            let output_path = if is_windows_target && !args.output.ends_with(".exe") {
                 format!("{}.exe", args.output)
             } else {
                 args.output.clone()
             };
 
-            // Write the generated Rust code to a temporary file
             let temp_rs_name = args.output.trim_end_matches(".exe");
             let temp_rs_file = format!("{}.rs", temp_rs_name);
             if let Err(e) = fs::write(&temp_rs_file, rust_code) {
@@ -61,17 +92,18 @@ fn main() {
                 std::process::exit(1);
             }
 
-            // Compile the Rust code to an executable using rustc
-            let output = match std::process::Command::new("rustc")
-                .arg(&temp_rs_file)
-                .arg("-o")
-                .arg(&output_path)
-                .output()
-            {
+            let mut command = std::process::Command::new("rustc");
+            command.arg(&temp_rs_file).arg("-o").arg(&output_path);
+
+            if let Some(triple) = &target_triple {
+                command.arg("--target").arg(triple);
+            }
+
+            let output = match command.output() {
                 Ok(out) => out,
                 Err(e) => {
                     eprintln!("Failed to run rustc: {}", e);
-                    fs::remove_file(&temp_rs_file).ok(); // Attempt to clean up
+                    fs::remove_file(&temp_rs_file).ok();
                     std::process::exit(1);
                 }
             };
@@ -81,11 +113,10 @@ fn main() {
                     "Rust compilation failed: {}",
                     String::from_utf8_lossy(&output.stderr)
                 );
-                fs::remove_file(&temp_rs_file).ok(); // Attempt to clean up
+                fs::remove_file(&temp_rs_file).ok();
                 std::process::exit(1);
             }
 
-            // Clean up the temporary Rust file
             if let Err(e) = fs::remove_file(&temp_rs_file) {
                 eprintln!("Failed to clean up temporary file: {}", e);
             }
