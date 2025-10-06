@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use fystan::codegen::Compiler;
-use std::collections::HashMap;
+use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -26,26 +26,13 @@ struct BuildArgs {
     #[arg(short, long)]
     output: String,
 
-    /// The target to compile for (e.g., windows:amd64)
+    /// The target to compile for (e.g., linux:x86_64)
     #[arg(long)]
     target: Option<String>,
 }
 
-fn get_supported_targets() -> HashMap<String, String> {
-    let mut targets = HashMap::new();
-    targets.insert("windows:amd64".to_string(), "x86_64-pc-windows-msvc".to_string());
-    targets.insert("windows:arm64".to_string(), "aarch64-pc-windows-msvc".to_string());
-    targets.insert("linux:amd64".to_string(), "x86_64-unknown-linux-gnu".to_string());
-    targets.insert("linux:arm64".to_string(), "aarch64-unknown-linux-gnu".to_string());
-    targets.insert("android:arm64".to_string(), "aarch64-linux-android".to_string());
-    targets.insert("wasm:wasm32".to_string(), "wasm32-unknown-unknown".to_string());
-    targets.insert("wasm:wasm64".to_string(), "wasm64-unknown-unknown".to_string());
-    targets
-}
-
 fn main() {
     let cli = Cli::parse();
-    let supported_targets = get_supported_targets();
 
     match cli.command {
         Commands::Build(args) => {
@@ -57,7 +44,36 @@ fn main() {
                 }
             };
 
-            let rust_code = match Compiler::compile(&source_code) {
+            let target = match &args.target {
+                Some(target_str) => match Target::from_string(target_str) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
+                },
+                None => {
+                    let os = if cfg!(target_os = "windows") {
+                        TargetOS::Windows
+                    } else if cfg!(target_os = "linux") {
+                        TargetOS::Linux
+                    } else {
+                        eprintln!("Error: Unsupported host OS. Please specify a --target.");
+                        std::process::exit(1);
+                    };
+                    let arch = if cfg!(target_arch = "x86_64") {
+                        TargetArch::X86_64
+                    } else if cfg!(target_arch = "aarch64") {
+                        TargetArch::AArch64
+                    } else {
+                        eprintln!("Error: Unsupported host architecture. Please specify a --target.");
+                        std::process::exit(1);
+                    };
+                    Target::new(os, arch).unwrap()
+                }
+            };
+
+            let rust_code = match Compiler::compile(&source_code, &target) {
                 Ok(code) => code,
                 Err(e) => {
                     eprintln!("Compilation Error: {}", e);
@@ -65,19 +81,7 @@ fn main() {
                 }
             };
 
-            let target_triple = match &args.target {
-                Some(target_str) => {
-                    if !supported_targets.contains_key(target_str) {
-                        eprintln!("Error: Unsupported target '{}'.", target_str);
-                        eprintln!("Supported targets are: {}", supported_targets.keys().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
-                        std::process::exit(1);
-                    }
-                    supported_targets.get(target_str).cloned()
-                }
-                None => None,
-            };
-
-            let is_windows_target = target_triple.as_deref().map_or(cfg!(windows), |t| t.contains("windows"));
+            let is_windows_target = target.os == TargetOS::Windows;
 
             let output_path = if is_windows_target && !args.output.ends_with(".exe") {
                 format!("{}.exe", args.output)
@@ -95,8 +99,8 @@ fn main() {
             let mut command = std::process::Command::new("rustc");
             command.arg(&temp_rs_file).arg("-o").arg(&output_path);
 
-            if let Some(triple) = &target_triple {
-                command.arg("--target").arg(triple);
+            if args.target.is_some() {
+                command.arg("--target").arg(target.to_rust_triple());
             }
 
             let output = match command.output() {
