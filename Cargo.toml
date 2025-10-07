@@ -6,10 +6,6 @@ edition = "2021"
 [dependencies]
 lazy_static = "1.5.0"
 clap = { version = "4.5.48", features = ["derive"] }
-cranelift = "0.124.1"
-cranelift-jit = "0.124.1"
-cranelift-module = "0.124.1"
-cranelift-frontend = "0.124.1"
 
 [profile.release]
 opt-level = 3

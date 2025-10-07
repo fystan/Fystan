@@ -1,5 +1,5 @@
 use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
-use crate::codegen::scope::ScopeManager;
+use crate::transpiler::scope::ScopeManager;
 use crate::target::Target;
 use std::fmt::Write;
 

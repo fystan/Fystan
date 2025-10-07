@@ -1,10 +1,13 @@
-use crate::codegen::generator::Generator;
+pub mod rust_generator;
+pub mod scope;
+
 use crate::target::Target;
+use self::rust_generator::Generator;
 
-pub struct Compiler;
+pub struct Transpiler;
 
-impl Compiler {
-    pub fn compile(source: &str, target: &Target) -> Result<String, String> {
+impl Transpiler {
+    pub fn transpile(source: &str, target: &Target) -> Result<String, String> {
         let l = crate::lexer::Lexer::new(source);
         let mut p = crate::parser::Parser::new(l);
         let program = p.parse_program();
