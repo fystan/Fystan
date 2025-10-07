@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use fystan::codegen::Compiler;
+use fystan::transpiler::Transpiler;
 use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
 
@@ -73,7 +73,7 @@ fn main() {
                 }
             };
 
-            let rust_code = match Compiler::compile(&source_code, &target) {
+            let rust_code = match Transpiler::transpile(&source_code, &target) {
                 Ok(code) => code,
                 Err(e) => {
                     eprintln!("Compilation Error: {}", e);
