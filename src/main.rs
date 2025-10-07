@@ -2,6 +2,8 @@ use clap::{Parser, Subcommand};
 use fystan::transpiler::Transpiler;
 use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
+use std::io::Write;
+use std::process::Stdio;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -89,25 +91,41 @@ fn main() {
                 args.output.clone()
             };
 
-            let temp_rs_name = args.output.trim_end_matches(".exe");
-            let temp_rs_file = format!("{}.rs", temp_rs_name);
-            if let Err(e) = fs::write(&temp_rs_file, rust_code) {
-                eprintln!("Failed to write temporary file: {}", e);
-                std::process::exit(1);
-            }
-
             let mut command = std::process::Command::new("rustc");
-            command.arg(&temp_rs_file).arg("-o").arg(&output_path);
+            command
+                .arg("-")
+                .arg("-o")
+                .arg(&output_path)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
 
             if args.target.is_some() {
                 command.arg("--target").arg(target.to_rust_triple());
             }
 
-            let output = match command.output() {
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(e) => {
+                    eprintln!("Failed to spawn rustc: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            if let Some(mut stdin) = child.stdin.take() {
+                if let Err(e) = stdin.write_all(rust_code.as_bytes()) {
+                    eprintln!("Failed to write to rustc stdin: {}", e);
+                    std::process::exit(1);
+                }
+            } else {
+                eprintln!("Failed to open stdin for rustc");
+                std::process::exit(1);
+            }
+
+            let output = match child.wait_with_output() {
                 Ok(out) => out,
                 Err(e) => {
-                    eprintln!("Failed to run rustc: {}", e);
-                    fs::remove_file(&temp_rs_file).ok();
+                    eprintln!("Failed to wait for rustc: {}", e);
                     std::process::exit(1);
                 }
             };
@@ -117,12 +135,7 @@ fn main() {
                     "Rust compilation failed: {}",
                     String::from_utf8_lossy(&output.stderr)
                 );
-                fs::remove_file(&temp_rs_file).ok();
                 std::process::exit(1);
-            }
-
-            if let Err(e) = fs::remove_file(&temp_rs_file) {
-                eprintln!("Failed to clean up temporary file: {}", e);
             }
 
             println!("Build successful! Executable written to {}", output_path);
