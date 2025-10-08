@@ -1,20 +1,23 @@
 use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
 use crate::transpiler::scope::ScopeManager;
 use crate::target::Target;
+use crate::ctmm::CTMMAnalysis;
 use std::fmt::Write;
 
 pub struct Generator {
     scopes: ScopeManager,
     temp_counter: usize,
     target: Target,
+    ctmm_analysis: CTMMAnalysis,
 }
 
 impl Generator {
-    pub fn new(target: Target) -> Self {
+    pub fn new(target: Target, ctmm_analysis: CTMMAnalysis) -> Self {
         Generator {
             scopes: ScopeManager::new(),
             temp_counter: 0,
             target,
+            ctmm_analysis,
         }
     }
 

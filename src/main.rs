@@ -4,6 +4,7 @@ use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
 use std::io::Write;
 use std::process::Stdio;
+use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -23,10 +24,6 @@ enum Commands {
 struct BuildArgs {
     /// The source file to compile
     source_path: String,
-
-    /// The output executable name
-    #[arg(short, long)]
-    output: String,
 
     /// The target to compile for (e.g., linux:x86_64)
     #[arg(long)]
@@ -83,12 +80,18 @@ fn main() {
                 }
             };
 
+            let source_path = Path::new(&args.source_path);
+            let output_filename = source_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+
             let is_windows_target = target.os == TargetOS::Windows;
 
-            let output_path = if is_windows_target && !args.output.ends_with(".exe") {
-                format!("{}.exe", args.output)
+            let output_path = if is_windows_target {
+                format!("{}.exe", output_filename)
             } else {
-                args.output.clone()
+                output_filename.to_string()
             };
 
             let mut command = std::process::Command::new("rustc");
