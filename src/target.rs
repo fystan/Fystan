@@ -53,25 +53,19 @@ impl Target {
             _ => return Err(format!("Unsupported architecture: {}", parts[1])),
         };
 
-        // Special case for wasm target
-        if os == TargetOS::WebAssembly {
-            if arch != TargetArch::Wasm32 && arch != TargetArch::Wasm64 {
-                 return Err("WebAssembly target must use wasm32 or wasm64 architecture".to_string());
-            }
-        }
-
-
         Self::new(os, arch)
     }
 
     pub fn is_valid_combination(&self) -> bool {
-        match (self.os, self.arch) {
-            (TargetOS::WebAssembly, TargetArch::X86_64) => false,
-            (TargetOS::WebAssembly, TargetArch::AArch64) => false,
-            (TargetOS::Android, TargetArch::Wasm32) => false,
-            (TargetOS::Android, TargetArch::Wasm64) => false,
-            _ => true,
-        }
+        matches!((self.os, self.arch),
+            (TargetOS::Windows, TargetArch::X86_64) |
+            (TargetOS::Windows, TargetArch::AArch64) |
+            (TargetOS::Linux, TargetArch::X86_64) |
+            (TargetOS::Linux, TargetArch::AArch64) |
+            (TargetOS::Android, TargetArch::AArch64) |
+            (TargetOS::WebAssembly, TargetArch::Wasm32) |
+            (TargetOS::WebAssembly, TargetArch::Wasm64)
+        )
     }
 
     pub fn to_rust_triple(&self) -> &str {
@@ -82,7 +76,6 @@ impl Target {
             (TargetOS::Windows, TargetArch::AArch64) => "aarch64-pc-windows-msvc",
             (TargetOS::WebAssembly, TargetArch::Wasm32) => "wasm32-unknown-unknown",
             (TargetOS::WebAssembly, TargetArch::Wasm64) => "wasm64-unknown-unknown",
-            (TargetOS::Android, TargetArch::X86_64) => "x86_64-linux-android",
             (TargetOS::Android, TargetArch::AArch64) => "aarch64-linux-android",
             _ => "unknown-unknown-unknown", // Should not happen due to validation
         }

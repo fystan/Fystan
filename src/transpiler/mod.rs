@@ -3,6 +3,7 @@ pub mod scope;
 
 use crate::target::Target;
 use self::rust_generator::Generator;
+use crate::ctmm::{CTMMAnalyzer, CTMMAnalysis};
 
 pub struct Transpiler;
 
@@ -16,7 +17,13 @@ impl Transpiler {
             return Err(format!("Parser errors: {:?}", errors));
         }
 
-        let mut generator = Generator::new(target.clone());
+        let mut ctmm_analyzer = CTMMAnalyzer::new();
+        let ctmm_analysis = match ctmm_analyzer.analyze(&program) {
+            Ok(analysis) => analysis,
+            Err(_) => return Err("CTMM analysis failed.".to_string()),
+        };
+
+        let mut generator = Generator::new(target.clone(), ctmm_analysis);
         generator.generate(program)
     }
 }
