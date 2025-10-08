@@ -28,6 +28,14 @@ struct BuildArgs {
     /// The target to compile for (e.g., linux:x86_64)
     #[arg(long)]
     target: Option<String>,
+
+    /// The path to the output file
+    #[arg(long, short = 'o')]
+    output: Option<String>,
+
+    /// The compilation mode (aot or jit)
+    #[arg(long, short = 'm', default_value = "aot")]
+    mode: String,
 }
 
 fn main() {
@@ -35,6 +43,11 @@ fn main() {
 
     match cli.command {
         Commands::Build(args) => {
+            if args.mode == "jit" {
+                println!("JIT mode is not yet implemented.");
+                std::process::exit(0);
+            }
+
             let source_code = match fs::read_to_string(&args.source_path) {
                 Ok(code) => code,
                 Err(e) => {
@@ -80,18 +93,23 @@ fn main() {
                 }
             };
 
-            let source_path = Path::new(&args.source_path);
-            let output_filename = source_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("output");
+            let output_path = match args.output {
+                Some(path) => path,
+                None => {
+                    let source_path = Path::new(&args.source_path);
+                    let output_filename = source_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("output");
 
-            let is_windows_target = target.os == TargetOS::Windows;
+                    let is_windows_target = target.os == TargetOS::Windows;
 
-            let output_path = if is_windows_target {
-                format!("{}.exe", output_filename)
-            } else {
-                output_filename.to_string()
+                    if is_windows_target {
+                        format!("{}.exe", output_filename)
+                    } else {
+                        output_filename.to_string()
+                    }
+                }
             };
 
             let mut command = std::process::Command::new("rustc");
