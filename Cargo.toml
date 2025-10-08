@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 lazy_static = "1.5.0"
 clap = { version = "4.5.48", features = ["derive"] }
+rand = "0.8.5"
 
 [profile.release]
 opt-level = 3

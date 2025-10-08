@@ -24,7 +24,7 @@ pub struct CTMMAnalysis {
 
 /// Custom error type for the CTMM module.
 #[derive(Debug)]
-pub struct CTMMError(String);
+pub struct CTMMError;
 
 // --- CTMM Analyzer ---
 
@@ -32,8 +32,6 @@ pub struct CTMMError(String);
 /// This is a placeholder for future implementation.
 pub struct CTMMAnalyzer {
     lifetime_map: HashMap<String, LifetimeInfo>,
-    allocation_points: Vec<AllocationPoint>,
-    deallocation_points: Vec<DeallocationPoint>,
 }
 
 impl CTMMAnalyzer {
@@ -41,8 +39,6 @@ impl CTMMAnalyzer {
     pub fn new() -> Self {
         Self {
             lifetime_map: HashMap::new(),
-            allocation_points: Vec::new(),
-            deallocation_points: Vec::new(),
         }
     }
 
