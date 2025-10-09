@@ -1,5 +1,6 @@
 pub mod rust_generator;
 pub mod scope;
+pub mod string_allocator;
 
 use crate::target::Target;
 use self::rust_generator::Generator;

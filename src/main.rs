@@ -123,7 +123,8 @@ fn main() {
                 }
             };
 
-            if let Err(e) = invoke_rustc(&rust_code, &output_path, &target, args.target.is_some()) {
+            let is_jit = args.mode == "jit";
+            if let Err(e) = invoke_rustc(&rust_code, &output_path, &target, args.target.is_some(), is_jit) {
                 eprintln!("{}", e);
                 std::process::exit(1);
             }
@@ -157,7 +158,7 @@ fn main() {
     }
 }
 
-fn invoke_rustc(rust_code: &str, output_path: &str, target: &Target, use_target: bool) -> Result<(), String> {
+fn invoke_rustc(rust_code: &str, output_path: &str, target: &Target, use_target: bool, is_jit: bool) -> Result<(), String> {
     let mut command = std::process::Command::new("rustc");
     command
         .arg("-")
@@ -166,6 +167,10 @@ fn invoke_rustc(rust_code: &str, output_path: &str, target: &Target, use_target:
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if !is_jit {
+        command.arg("-C").arg("opt-level=3");
+    }
 
     if use_target {
         command.arg("--target").arg(target.to_rust_triple());
