@@ -1,10 +1,12 @@
 use crate::ast::{BlockStatement, ExpressionEnum, ForExpression, InfixOperator, PrefixOperator, Program, Statement};
 use crate::transpiler::scope::ScopeManager;
+use crate::transpiler::string_allocator::StringAllocator;
 use std::fmt::Write;
 
 pub struct Generator {
     scopes: ScopeManager,
     temp_counter: usize,
+    string_allocator: StringAllocator,
 }
 
 impl Generator {
@@ -12,17 +14,17 @@ impl Generator {
         Generator {
             scopes: ScopeManager::new(),
             temp_counter: 0,
+            string_allocator: StringAllocator::new(),
         }
     }
 
     pub fn generate(&mut self, program: Program) -> Result<String, String> {
-        let mut result = String::new();
         let mut function_defs = String::new();
         let mut main_statements = String::new();
         let mut has_user_main = false;
 
-        writeln!(result, "// Auto-generated Rust code from Fystan program").unwrap();
-
+        // First, generate all statement and function code.
+        // This will populate the string_allocator.
         for statement in &program.statements {
             if let Statement::Expression(expr_stmt) = statement {
                 if let ExpressionEnum::Function(func_lit) = &expr_stmt.expression {
@@ -42,15 +44,23 @@ impl Generator {
             }
         }
 
-        result.push_str(&function_defs);
+        // Now that the allocator is populated, assemble the final code.
+        let mut final_code = String::new();
+        writeln!(final_code, "#[macro_use]\nextern crate lazy_static;").unwrap();
+        writeln!(final_code, "// Auto-generated Rust code from Fystan program").unwrap();
+
+        // Get the initialization code for the now-populated string arena.
+        let init_code = self.string_allocator.get_initialization_code();
+        final_code.push_str(&init_code);
+        final_code.push_str(&function_defs);
 
         if !has_user_main {
-            writeln!(result, "fn main() {{").unwrap();
-            result.push_str(&main_statements);
-            writeln!(result, "}}").unwrap();
+            writeln!(final_code, "fn main() {{").unwrap();
+            final_code.push_str(&main_statements);
+            writeln!(final_code, "}}").unwrap();
         }
 
-        Ok(result)
+        Ok(final_code)
     }
 
     fn generate_function_definition(&mut self, func_lit: crate::ast::FunctionLiteral) -> Result<String, String> {
@@ -124,7 +134,10 @@ impl Generator {
         match expression {
             ExpressionEnum::IntegerLiteral(lit) => Ok(lit.value.to_string()),
             ExpressionEnum::FloatLiteral(lit) => Ok(lit.value.to_string()),
-            ExpressionEnum::StringLiteral(lit) => Ok(format!("\"{}\"", lit.value)),
+            ExpressionEnum::StringLiteral(lit) => {
+                let index = self.string_allocator.allocate(&lit.value);
+                Ok(format!("STRING_ARENA[{}]", index))
+            },
             ExpressionEnum::Boolean(b) => Ok(b.value.to_string()),
             ExpressionEnum::None(_) => Ok("None".to_string()),
             ExpressionEnum::Identifier(ident) => {
