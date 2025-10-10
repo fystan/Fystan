@@ -80,6 +80,19 @@ impl Target {
             _ => "unknown-unknown-unknown", // Should not happen due to validation
         }
     }
+
+    pub fn to_c_triple(&self) -> &str {
+        match (self.os, self.arch) {
+            (TargetOS::Linux, TargetArch::X86_64) => "x86_64-linux-gnu",
+            (TargetOS::Linux, TargetArch::AArch64) => "aarch64-linux-gnu",
+            (TargetOS::Windows, TargetArch::X86_64) => "x86_64-w64-mingw32",
+            (TargetOS::Windows, TargetArch::AArch64) => "aarch64-w64-mingw32",
+            (TargetOS::WebAssembly, TargetArch::Wasm32) => "wasm32-unknown-emscripten",
+            (TargetOS::WebAssembly, TargetArch::Wasm64) => "wasm64-unknown-emscripten",
+            (TargetOS::Android, TargetArch::AArch64) => "aarch64-linux-android",
+            _ => "unknown-unknown-unknown",
+        }
+    }
 }
 
 impl fmt::Display for Target {

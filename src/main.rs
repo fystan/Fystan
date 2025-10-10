@@ -1,9 +1,8 @@
 use clap::{Parser, Subcommand};
-use fystan::transpiler::Transpiler;
+use fystan::transpiler::{Transpiler, vm::VM};
+use fystan::interpreter::Interpreter;
 use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
-use std::io::Write;
-use std::process::Stdio;
 use std::path::Path;
 use rand::Rng;
 
@@ -34,7 +33,7 @@ struct BuildArgs {
     #[arg(long, short = 'o')]
     output: Option<String>,
 
-    /// The compilation mode (aot or jit)
+    /// The compilation mode (aot, jit, or interpret)
     #[arg(long, short = 'm', default_value = "aot")]
     mode: String,
 }
@@ -81,17 +80,30 @@ fn main() {
                 }
             };
 
-            let rust_code = match Transpiler::transpile(&source_code, &target) {
-                Ok(code) => code,
+            if args.mode == "interpret" {
+                match Interpreter::interpret(&source_code, &target) {
+                    Ok(_) => {
+                        println!("Interpretation successful!");
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("Interpretation Error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            let (bytecode, string_allocator) = match Transpiler::transpile(&source_code, &target) {
+                Ok((code, sa)) => (code, sa),
                 Err(e) => {
                     eprintln!("Compilation Error: {}", e);
                     std::process::exit(1);
                 }
             };
 
-            let output_path = if args.mode == "jit" {
+            let _output_path = if args.mode == "jit" {
                 let rand_string: String = rand::thread_rng()
-                    .sample_iter(&rand::distributions::Alphanumeric)
+                    .sample_iter(rand::distributions::Alphanumeric)
                     .take(10)
                     .map(char::from)
                     .collect();
@@ -123,83 +135,23 @@ fn main() {
                 }
             };
 
-            let is_jit = args.mode == "jit";
-            if let Err(e) = invoke_rustc(&rust_code, &output_path, &target, args.target.is_some(), is_jit) {
-                eprintln!("{}", e);
+            // For AOT and JIT, use VM to execute bytecode
+            let strings = string_allocator.get_strings();
+            let mut vm = VM::new(bytecode, strings);
+            if let Err(e) = vm.run() {
+                eprintln!("Execution Error: {}", e);
                 std::process::exit(1);
             }
 
-            if args.mode == "jit" {
-                let mut command = std::process::Command::new(&output_path);
-                let output = match command.output() {
-                    Ok(out) => out,
-                    Err(e) => {
-                        eprintln!("Failed to run compiled program: {}", e);
-                        std::process::exit(1);
-                    }
-                };
-
-                if !output.status.success() {
-                    eprintln!(
-                        "Program execution failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    );
-                } else {
-                    println!("{}", String::from_utf8_lossy(&output.stdout));
-                }
-
-                if let Err(e) = fs::remove_file(&output_path) {
-                    eprintln!("Warning: Failed to remove temporary file '{}': {}", output_path, e);
-                }
-            } else {
-                println!("Build successful! Executable written to {}", output_path);
+            if args.mode == "aot" {
+                // For AOT, we could save bytecode to file, but for now just execute
+                println!("AOT mode: Bytecode executed successfully!");
+            } else if args.mode == "jit" {
+                println!("JIT mode: Bytecode executed successfully!");
             }
         }
     }
 }
 
-fn invoke_rustc(rust_code: &str, output_path: &str, target: &Target, use_target: bool, is_jit: bool) -> Result<(), String> {
-    let mut command = std::process::Command::new("rustc");
-    command
-        .arg("-")
-        .arg("-o")
-        .arg(output_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
 
-    if !is_jit {
-        command.arg("-C").arg("opt-level=3");
-    }
 
-    if use_target {
-        command.arg("--target").arg(target.to_rust_triple());
-    }
-
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(e) => return Err(format!("Failed to spawn rustc: {}", e)),
-    };
-
-    if let Some(mut stdin) = child.stdin.take() {
-        if let Err(e) = stdin.write_all(rust_code.as_bytes()) {
-            return Err(format!("Failed to write to rustc stdin: {}", e));
-        }
-    } else {
-        return Err("Failed to open stdin for rustc".to_string());
-    }
-
-    let output = match child.wait_with_output() {
-        Ok(out) => out,
-        Err(e) => return Err(format!("Failed to wait for rustc: {}", e)),
-    };
-
-    if !output.status.success() {
-        return Err(format!(
-            "Rust compilation failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    Ok(())
-}

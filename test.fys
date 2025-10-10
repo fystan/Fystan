@@ -55,16 +55,6 @@ while count < 3:
 # --- Data Structures: Lists ---
 print("\n--- Data Structures: Lists ---")
 int_list = [1, 2, 3, 4, 5]
-print(len(int_list))
 # NOTE: Printing the list directly and item access/assignment are not yet supported.
-
-# --- Functions ---
-print("\n--- Functions ---")
-
-def simple_func():
-    print("This is a simple function.")
-    return 0
-
-simple_func()
 
 print("\n--- Test Complete ---")

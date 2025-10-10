@@ -16,6 +16,10 @@ impl StringAllocator {
         index
     }
 
+    pub fn get_strings(&self) -> Vec<String> {
+        self.arena.clone()
+    }
+
     pub fn get_initialization_code(&self) -> String {
         if self.arena.is_empty() {
             return "".to_string();
@@ -29,6 +33,18 @@ impl StringAllocator {
         code.push_str("        ]\n");
         code.push_str("    };\n");
         code.push_str("}\n");
+        code
+    }
+
+    pub fn get_c_initialization_code(&self) -> String {
+        if self.arena.is_empty() {
+            return "".to_string();
+        }
+        let mut code = "const char* string_arena[] = {\n".to_string();
+        for s in &self.arena {
+            code.push_str(&format!("    \"{}\",\n", s.escape_default()));
+        }
+        code.push_str("};\n");
         code
     }
 }
