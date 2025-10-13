@@ -1,10 +1,8 @@
 use clap::{Parser, Subcommand};
-use fystan::transpiler::{Transpiler, vm::VM};
-use fystan::interpreter::Interpreter;
+use fystan::transpiler::{Transpiler, aot::AOTCompiler, jit::JITCompiler};
 use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
 use std::path::Path;
-use rand::Rng;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -33,7 +31,7 @@ struct BuildArgs {
     #[arg(long, short = 'o')]
     output: Option<String>,
 
-    /// The compilation mode (aot, jit, or interpret)
+    /// The compilation mode (aot or jit)
     #[arg(long, short = 'm', default_value = "aot")]
     mode: String,
 }
@@ -80,20 +78,7 @@ fn main() {
                 }
             };
 
-            if args.mode == "interpret" {
-                match Interpreter::interpret(&source_code, &target) {
-                    Ok(_) => {
-                        println!("Interpretation successful!");
-                        return;
-                    }
-                    Err(e) => {
-                        eprintln!("Interpretation Error: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-
-            let (bytecode, string_allocator) = match Transpiler::transpile(&source_code, &target) {
+            let (bytecode, _string_allocator) = match Transpiler::transpile(&source_code, &target) {
                 Ok((code, sa)) => (code, sa),
                 Err(e) => {
                     eprintln!("Compilation Error: {}", e);
@@ -101,22 +86,9 @@ fn main() {
                 }
             };
 
-            let _output_path = if args.mode == "jit" {
-                let rand_string: String = rand::thread_rng()
-                    .sample_iter(rand::distributions::Alphanumeric)
-                    .take(10)
-                    .map(char::from)
-                    .collect();
-                let temp_filename = format!("fystan_jit_{}", rand_string);
-                let is_windows_target = target.os == TargetOS::Windows;
-                if is_windows_target {
-                    format!("{}.exe", temp_filename)
-                } else {
-                    temp_filename
-                }
-            } else {
-                match args.output {
-                    Some(path) => path,
+            if args.mode == "aot" {
+                let output_path = match &args.output {
+                    Some(path) => path.clone(),
                     None => {
                         let source_path = Path::new(&args.source_path);
                         let output_filename = source_path
@@ -127,31 +99,22 @@ fn main() {
                         let is_windows_target = target.os == TargetOS::Windows;
 
                         if is_windows_target {
-                            format!("{}.exe", output_filename)
+                            format!("{}.obj", output_filename)
                         } else {
-                            output_filename.to_string()
+                            format!("{}.o", output_filename)
                         }
                     }
-                }
-            };
+                };
 
-            // For AOT and JIT, use VM to execute bytecode
-            let strings = string_allocator.get_strings();
-            let mut vm = VM::new(bytecode, strings);
-            if let Err(e) = vm.run() {
-                eprintln!("Execution Error: {}", e);
-                std::process::exit(1);
-            }
-
-            if args.mode == "aot" {
-                // For AOT, we could save bytecode to file, but for now just execute
-                println!("AOT mode: Bytecode executed successfully!");
+                let mut aot = AOTCompiler::new(&target);
+                aot.compile_and_save_executable(&bytecode, &output_path, &target).expect("AOT compilation failed");
             } else if args.mode == "jit" {
-                println!("JIT mode: Bytecode executed successfully!");
+                let mut jit = JITCompiler::new();
+                match jit.compile_and_run(&bytecode) {
+                    Ok(result) => println!("JIT execution result: {}", result),
+                    Err(e) => eprintln!("JIT compilation failed: {}", e),
+                }
             }
         }
     }
 }
-
-
-

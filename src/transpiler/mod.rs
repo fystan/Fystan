@@ -1,5 +1,7 @@
 pub mod bytecode_generator;
 pub mod vm;
+pub mod aot;
+pub mod jit;
 pub mod scope;
 pub mod string_allocator;
 

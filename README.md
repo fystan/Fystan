@@ -84,7 +84,29 @@ The core of CTMM is **Compile-time Garbage Collection Elimination**:
 ✅ **No manual `free()` calls**  
 ✅ **Near-zero runtime overhead**
 
-In rare cases where an object’s lifetime cannot be fully resolved at compile-time (such as dynamic cyclic references), CTMM triggers a **mini-GC**:  
+In rare cases where an object’s lifetime cannot be fully resolved at compile-time (such as dynamic cyclic references), CTMM triggers a **mini-GC**:
 It runs briefly to clean up unreachable cycles, then exits immediately, causing minimal pause times (microseconds to milliseconds).
 
 ---
+
+## 🚀 Release Build
+
+For optimized performance, build the project in release mode:
+
+```bash
+cargo build --release
+```
+
+This generates a highly optimized executable in `target/release/fystan.exe` (on Windows) or `target/release/fystan` (on Linux/macOS).
+
+### Testing
+
+Test the compiler with the provided test file:
+
+```bash
+# AOT mode (saves bytecode) - default
+target/release/fystan build test.fys
+
+# JIT mode (generates executable)
+target/release/fystan build --mode jit test.fys
+```
