@@ -16,6 +16,8 @@ pub enum Value {
     Str(String),
     Bool(bool),
     List(Vec<Value>),
+    None,
+    Function(String, usize, Vec<u8>), // name, arity, bytecode
 }
 
 impl VM {
@@ -173,10 +175,25 @@ impl VM {
                                     Value::Str(s) => print!("{}", s),
                                     Value::Bool(b) => print!("{}", b),
                                     Value::List(_) => print!("[List]"),
+                                    Value::None => print!("None"),
+                                    Value::Function(..) => print!("[Function]"),
                                 }
                             }
                         }
                         println!();
+                    } else {
+                        if let Some(Value::Function(_name, _arity, body)) = self.variables.get(&name).cloned() {
+                            let mut func_vm = VM::new(body, self.strings.clone());
+                            for _ in 0..argc {
+                                func_vm.stack.push(self.stack.pop().unwrap());
+                            }
+                            func_vm.run()?;
+                            if let Some(return_value) = func_vm.stack.pop() {
+                                self.stack.push(return_value);
+                            }
+                        } else {
+                            return Err(format!("Undefined function: {}", name));
+                        }
                     }
                 }
                 Opcode::Return => {
@@ -190,6 +207,8 @@ impl VM {
                             Value::Str(s) => println!("{}", s),
                             Value::Bool(b) => println!("{}", b),
                             Value::List(_) => println!("[List]"),
+                            Value::None => println!("None"),
+                            Value::Function(..) => println!("[Function]"),
                         }
                     }
                 }
@@ -201,6 +220,37 @@ impl VM {
                     }
                     list.reverse();
                     self.stack.push(Value::List(list));
+                }
+                Opcode::LoadNone => self.stack.push(Value::None),
+                Opcode::DefFn(name, arity, body) => {
+                    self.variables.insert(name.clone(), Value::Function(name, arity, body));
+                }
+                Opcode::GetItem => {
+                    let index = self.stack.pop().ok_or("Stack underflow for index")?;
+                    let list = self.stack.pop().ok_or("Stack underflow for list")?;
+                    match (list, index) {
+                        (Value::List(l), Value::Int(i)) => {
+                            if i < 0 || i as usize >= l.len() {
+                                return Err("Index out of bounds".to_string());
+                            }
+                            self.stack.push(l[i as usize].clone());
+                        }
+                        _ => return Err("Type error in get_item".to_string()),
+                    }
+                }
+                Opcode::SetItem => {
+                    let value = self.stack.pop().ok_or("Stack underflow for value")?;
+                    let index = self.stack.pop().ok_or("Stack underflow for index")?;
+                    let mut list = self.stack.pop().ok_or("Stack underflow for list")?;
+                    match (&mut list, index) {
+                        (Value::List(l), Value::Int(i)) => {
+                            if i < 0 || i as usize >= l.len() {
+                                return Err("Index out of bounds".to_string());
+                            }
+                            l[i as usize] = value;
+                        }
+                        _ => return Err("Type error in set_item".to_string()),
+                    }
                 }
             }
         }
@@ -282,6 +332,21 @@ impl VM {
                 let size = self.read_i64()? as usize;
                 Ok(Opcode::BuildList(size))
             }
+            26 => Ok(Opcode::LoadNone),
+            27 => {
+                let name_len = self.bytecode[self.pc] as usize;
+                self.pc += 1;
+                let name = String::from_utf8_lossy(&self.bytecode[self.pc..self.pc + name_len]).to_string();
+                self.pc += name_len;
+                let arity = self.bytecode[self.pc] as usize;
+                self.pc += 1;
+                let body_len = self.read_u32()? as usize;
+                let body = self.bytecode[self.pc..self.pc + body_len].to_vec();
+                self.pc += body_len;
+                Ok(Opcode::DefFn(name, arity, body))
+            }
+            28 => Ok(Opcode::GetItem),
+            29 => Ok(Opcode::SetItem),
             _ => Err("Unknown opcode".to_string()),
         }
     }
@@ -302,5 +367,14 @@ impl VM {
         let bytes: [u8; 8] = self.bytecode[self.pc..self.pc + 8].try_into().unwrap();
         self.pc += 8;
         Ok(f64::from_le_bytes(bytes))
+    }
+
+    fn read_u32(&mut self) -> Result<u32, String> {
+        if self.pc + 4 > self.bytecode.len() {
+            return Err("Not enough bytes for u32".to_string());
+        }
+        let bytes: [u8; 4] = self.bytecode[self.pc..self.pc + 4].try_into().unwrap();
+        self.pc += 4;
+        Ok(u32::from_le_bytes(bytes))
     }
 }
