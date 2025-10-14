@@ -29,6 +29,10 @@ pub enum Opcode {
     Print,
     Halt,
     BuildList(usize),
+    LoadNone,
+    DefFn(String, usize, Vec<u8>),
+    GetItem,
+    SetItem,
 }
 
 pub struct BytecodeGenerator {
@@ -114,6 +118,10 @@ impl BytecodeGenerator {
                     InfixOperator::Assign => {
                         if let ExpressionEnum::Identifier(ident) = left_expr {
                             self.instructions.push(Opcode::StoreVar(ident.value));
+                        } else if let ExpressionEnum::IndexExpression(index_expr) = left_expr {
+                            self.generate_expression(*index_expr.left)?;
+                            self.generate_expression(*index_expr.index)?;
+                            self.instructions.push(Opcode::SetItem);
                         }
                     }
                     _ => return Err("Unsupported operator".to_string()),
@@ -128,14 +136,10 @@ impl BytecodeGenerator {
             }
             ExpressionEnum::Call(call_expr) => {
                 if let ExpressionEnum::Identifier(ident) = call_expr.function.as_ref() {
-                    if ident.value == "print" {
-                        for arg in &call_expr.arguments {
-                            self.generate_expression(arg.clone())?;
-                        }
-                        self.instructions.push(Opcode::Call(ident.value.clone(), call_expr.arguments.len()));
-                    } else {
-                        return Err("Unsupported function call".to_string());
+                    for arg in &call_expr.arguments {
+                        self.generate_expression(arg.clone())?;
                     }
+                    self.instructions.push(Opcode::Call(ident.value.clone(), call_expr.arguments.len()));
                 } else {
                     return Err("Unsupported function call".to_string());
                 }
@@ -215,6 +219,26 @@ impl BytecodeGenerator {
                 }
                 self.instructions.push(Opcode::BuildList(arr_lit.elements.len()));
             }
+            ExpressionEnum::None(_) => {
+                self.instructions.push(Opcode::LoadNone);
+            }
+            ExpressionEnum::Function(func) => {
+                let mut func_generator = BytecodeGenerator::new();
+                func_generator.generate_block_statement(func.body)?;
+                func_generator.instructions.push(Opcode::LoadNone);
+                func_generator.instructions.push(Opcode::Return);
+                let func_bytecode = func_generator.serialize_bytecode();
+                self.instructions.push(Opcode::DefFn(
+                    func.name.value,
+                    func.parameters.len(),
+                    func_bytecode,
+                ));
+            }
+            ExpressionEnum::IndexExpression(expr) => {
+                self.generate_expression(*expr.left)?;
+                self.generate_expression(*expr.index)?;
+                self.instructions.push(Opcode::GetItem);
+            }
             _ => return Err("Unsupported expression".to_string()),
         }
         Ok(())
@@ -236,11 +260,13 @@ impl BytecodeGenerator {
                 Opcode::StoreVar(name) => current_address += 1 + 1 + name.len(),
                 Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div | Opcode::Mod |
                 Opcode::Eq | Opcode::NotEq | Opcode::Lt | Opcode::Gt | Opcode::And | Opcode::Or |
-                Opcode::Not | Opcode::Neg | Opcode::Return | Opcode::Print | Opcode::Halt => current_address += 1,
+                Opcode::Not | Opcode::Neg | Opcode::Return | Opcode::Print | Opcode::Halt |
+                Opcode::LoadNone | Opcode::GetItem | Opcode::SetItem => current_address += 1,
                 Opcode::Jump(_) => current_address += 9,
                 Opcode::JumpIfFalse(_) => current_address += 9,
                 Opcode::Call(name, _) => current_address += 1 + 1 + name.len() + 1,
                 Opcode::BuildList(_) => current_address += 9,
+                Opcode::DefFn(name, _, body) => current_address += 1 + 1 + name.len() + 1 + 4 + body.len(),
             }
         }
 
@@ -311,6 +337,17 @@ impl BytecodeGenerator {
                     bytecode.push(25);
                     bytecode.extend_from_slice(&(*size as i64).to_le_bytes());
                 }
+                Opcode::LoadNone => bytecode.push(26),
+                Opcode::DefFn(name, arity, body) => {
+                    bytecode.push(27);
+                    bytecode.push(name.len() as u8);
+                    bytecode.extend_from_slice(name.as_bytes());
+                    bytecode.push(*arity as u8);
+                    bytecode.extend_from_slice(&(body.len() as u32).to_le_bytes());
+                    bytecode.extend_from_slice(body);
+                }
+                Opcode::GetItem => bytecode.push(28),
+                Opcode::SetItem => bytecode.push(29),
             }
         }
 
