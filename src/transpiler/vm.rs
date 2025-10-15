@@ -7,6 +7,7 @@ pub struct VM {
     pc: usize,
     bytecode: Vec<u8>,
     strings: Vec<String>,
+    exception_handlers: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,7 +32,6 @@ impl VM {
             strings,
         }
     }
-
     /// Runs the bytecode in the VM.
     pub fn run(&mut self) -> Result<(), String> {
         while self.pc < self.bytecode.len() {
@@ -177,6 +177,7 @@ impl VM {
                                     Value::List(_) => print!("[List]"),
                                     Value::None => print!("None"),
                                     Value::Function(..) => print!("[Function]"),
+                                    _ => print!("Value"),
                                 }
                             }
                         }
@@ -209,6 +210,7 @@ impl VM {
                             Value::List(_) => println!("[List]"),
                             Value::None => println!("None"),
                             Value::Function(..) => println!("[Function]"),
+                            _ => println!("Value"),
                         }
                     }
                 }
@@ -249,25 +251,26 @@ impl VM {
                      return Err("PrintStr expects an integer index on the stack".to_string());
                  }
              }
-             Opcode::SetItem => {
-                 let index = self.stack.pop().unwrap();
-                 let list = self.stack.pop().unwrap();
-                 let value = self.stack.pop().unwrap();
-                 if let Value::List(mut l) = list {
-                     if let Value::Int(i) = index {
-                         l[i as usize] = value;
-                         self.stack.push(Value::List(l));
-                     } else {
-                         return Err("Index is not an integer".to_string());
-                     }
-                 } else {
-                     return Err("Can only set item on a list".to_string());
-                 }
-             }
+                Opcode::SetItem => {
+                    let index = self.stack.pop().ok_or("Stack underflow for index")?;
+                    let list = self.stack.pop().ok_or("Stack underflow for list")?;
+                    let value = self.stack.pop().ok_or("Stack underflow for value")?;
+                    if let Value::List(mut l) = list {
+                        if let Value::Int(i) = index {
+                            if i < 0 || i as usize >= l.len() {
+                                return Err("Index out of bounds".to_string());
+                            }
+                            l[i as usize] = value;
+                            self.stack.push(Value::List(l));
+                        } else {
+                            return Err("Index is not an integer".to_string());
+                        }
+                    } else {
+                        return Err("Can only set item on a list".to_string());
+                    }
+                }
             }
         }
-        Ok(())
-    }
 
     fn read_opcode(&mut self) -> Result<Opcode, String> {
         if self.pc >= self.bytecode.len() {
@@ -363,7 +366,6 @@ impl VM {
              _ => Err("Unknown opcode".to_string()),
         }
     }
-
     fn read_i64(&mut self) -> Result<i64, String> {
         if self.pc + 8 > self.bytecode.len() {
             return Err("Not enough bytes for i64".to_string());

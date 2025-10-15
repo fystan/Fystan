@@ -372,6 +372,12 @@ impl BytecodeGenerator {
                 Opcode::GetItem => bytecode.push(28),
                 Opcode::PrintStr => bytecode.push(29),
                 Opcode::SetItem => bytecode.push(30),
+                Opcode::SetupExcept(addr) => {
+                    bytecode.push(31);
+                    bytecode.extend_from_slice(&(*addr as i64).to_le_bytes());
+                }
+                Opcode::PopExcept => bytecode.push(32),
+                Opcode::Raise => bytecode.push(33),
             }
         }
 

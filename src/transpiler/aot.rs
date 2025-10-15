@@ -33,6 +33,7 @@ pub enum Opcode {
     Call(String, usize), // Function name and arg count
     Return,
     Print,
+    PrintStr,
     Halt,
     BuildList(usize),
 }
@@ -122,6 +123,10 @@ impl AOTCompiler {
             let pc = i;
             let opcode = &opcodes[i];
 
+            if !blocks.contains_key(&pc) {
+                i += 1;
+                continue;
+            }
             builder.switch_to_block(blocks[&pc]);
 
             translate_opcode(&mut builder, &mut self.module, &mut stack, &mut blocks, &mut variables, opcode, pc)?;
@@ -386,6 +391,15 @@ fn translate_opcode(builder: &mut FunctionBuilder, module: &mut ObjectModule, st
             let zero = builder.ins().iconst(types::I32, 0);
             builder.ins().return_(&[zero]);
         }
+        Opcode::PrintStr => todo!(),
+        Opcode::LoadNone => todo!(),
+        Opcode::DefFn(_, _, _) => todo!(),
+        Opcode::GetItem => todo!(),
+        Opcode::SetItem => todo!(),
+        Opcode::SetupExcept(_) => todo!(),
+        Opcode::PopExcept => todo!(),
+        Opcode::Raise => todo!(),
+        Opcode::BuildList(_) => todo!(),
         _ => return Err(format!("Opcode not implemented: {:?}", opcode)),
     }
     Ok(())
