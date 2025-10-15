@@ -27,6 +27,7 @@ pub enum Opcode {
     Call(String, usize), // Function name and arg count
     Return,
     Print,
+    PrintStr,
     Halt,
     BuildList(usize),
     LoadNone,
@@ -99,32 +100,68 @@ impl BytecodeGenerator {
                 self.instructions.push(Opcode::LoadVar(ident.value));
             }
             ExpressionEnum::Infix(infix_expr) => {
+                let op = infix_expr.operator;
                 let left_expr = *infix_expr.left;
                 let right_expr = *infix_expr.right;
-                self.generate_expression(left_expr.clone())?;
-                self.generate_expression(right_expr)?;
-                match infix_expr.operator {
-                    InfixOperator::Plus => self.instructions.push(Opcode::Add),
-                    InfixOperator::Minus => self.instructions.push(Opcode::Sub),
-                    InfixOperator::Multiply => self.instructions.push(Opcode::Mul),
-                    InfixOperator::Divide => self.instructions.push(Opcode::Div),
-                    InfixOperator::Mod => self.instructions.push(Opcode::Mod),
-                    InfixOperator::Eq => self.instructions.push(Opcode::Eq),
-                    InfixOperator::NotEq => self.instructions.push(Opcode::NotEq),
-                    InfixOperator::Lt => self.instructions.push(Opcode::Lt),
-                    InfixOperator::Gt => self.instructions.push(Opcode::Gt),
-                    InfixOperator::And => self.instructions.push(Opcode::And),
-                    InfixOperator::Or => self.instructions.push(Opcode::Or),
-                    InfixOperator::Assign => {
-                        if let ExpressionEnum::Identifier(ident) = left_expr {
-                            self.instructions.push(Opcode::StoreVar(ident.value));
-                        } else if let ExpressionEnum::IndexExpression(index_expr) = left_expr {
-                            self.generate_expression(*index_expr.left)?;
-                            self.generate_expression(*index_expr.index)?;
-                            self.instructions.push(Opcode::SetItem);
+
+                // Check if it's any kind of assignment
+                if op == InfixOperator::Assign || op == InfixOperator::PlusEq || op == InfixOperator::MinusEq || op == InfixOperator::AsteriskEq || op == InfixOperator::SlashEq {
+                    if let ExpressionEnum::Identifier(ident) = left_expr {
+                        match op {
+                            InfixOperator::Assign => {
+                                // RHS -> Store
+                                self.generate_expression(right_expr)?;
+                                self.instructions.push(Opcode::StoreVar(ident.value));
+                            }
+                            InfixOperator::PlusEq => {
+                                // LHS_Load -> RHS -> Add -> Store
+                                self.instructions.push(Opcode::LoadVar(ident.value.clone()));
+                                self.generate_expression(right_expr)?;
+                                self.instructions.push(Opcode::Add);
+                                self.instructions.push(Opcode::StoreVar(ident.value));
+                            }
+                            InfixOperator::MinusEq => {
+                                self.instructions.push(Opcode::LoadVar(ident.value.clone()));
+                                self.generate_expression(right_expr)?;
+                                self.instructions.push(Opcode::Sub);
+                                self.instructions.push(Opcode::StoreVar(ident.value));
+                            }
+                            InfixOperator::AsteriskEq => {
+                                self.instructions.push(Opcode::LoadVar(ident.value.clone()));
+                                self.generate_expression(right_expr)?;
+                                self.instructions.push(Opcode::Mul);
+                                self.instructions.push(Opcode::StoreVar(ident.value));
+                            }
+                            InfixOperator::SlashEq => {
+                                self.instructions.push(Opcode::LoadVar(ident.value.clone()));
+                                self.generate_expression(right_expr)?;
+                                self.instructions.push(Opcode::Div);
+                                self.instructions.push(Opcode::StoreVar(ident.value));
+                            }
+                            _ => unreachable!(), // Should not happen
                         }
+                    } else {
+                        // Handle list assignments etc. later
+                        return Err("Invalid assignment target".to_string());
                     }
-                    _ => return Err("Unsupported operator".to_string()),
+                } else {
+                    // For all other infix operators, evaluate left then right.
+                    self.generate_expression(left_expr)?;
+                    self.generate_expression(right_expr)?;
+                    match op {
+                        InfixOperator::Plus => self.instructions.push(Opcode::Add),
+                        InfixOperator::Minus => self.instructions.push(Opcode::Sub),
+                        InfixOperator::Multiply => self.instructions.push(Opcode::Mul),
+                        InfixOperator::Divide => self.instructions.push(Opcode::Div),
+                        InfixOperator::Mod => self.instructions.push(Opcode::Mod),
+                        InfixOperator::Eq => self.instructions.push(Opcode::Eq),
+                        InfixOperator::NotEq => self.instructions.push(Opcode::NotEq),
+                        InfixOperator::Lt => self.instructions.push(Opcode::Lt),
+                        InfixOperator::Gt => self.instructions.push(Opcode::Gt),
+                        InfixOperator::And => self.instructions.push(Opcode::And),
+                        InfixOperator::Or => self.instructions.push(Opcode::Or),
+                        _ => return Err(format!("Unsupported operator {:?}", op)),
+                    }
                 }
             }
             ExpressionEnum::Prefix(prefix_expr) => {
@@ -136,10 +173,21 @@ impl BytecodeGenerator {
             }
             ExpressionEnum::Call(call_expr) => {
                 if let ExpressionEnum::Identifier(ident) = call_expr.function.as_ref() {
-                    for arg in &call_expr.arguments {
+                    // Special case for print() to handle different types
+                    if ident.value == "print" && call_expr.arguments.len() == 1 {
+                        let arg = &call_expr.arguments[0];
                         self.generate_expression(arg.clone())?;
+                        if matches!(arg, ExpressionEnum::StringLiteral(_)) {
+                            self.instructions.push(Opcode::PrintStr);
+                        } else {
+                            self.instructions.push(Opcode::Print);
+                        }
+                    } else {
+                        for arg in &call_expr.arguments {
+                            self.generate_expression(arg.clone())?;
+                        }
+                        self.instructions.push(Opcode::Call(ident.value.clone(), call_expr.arguments.len()));
                     }
-                    self.instructions.push(Opcode::Call(ident.value.clone(), call_expr.arguments.len()));
                 } else {
                     return Err("Unsupported function call".to_string());
                 }
@@ -246,31 +294,8 @@ impl BytecodeGenerator {
 
     fn serialize_bytecode(&self) -> Vec<u8> {
         let mut bytecode = Vec::new();
-        let mut addresses = Vec::new();
-        let mut current_address = 0;
 
         for op in &self.instructions {
-            addresses.push(current_address);
-            match op {
-                Opcode::LoadConst(_) => current_address += 9,
-                Opcode::LoadFloat(_) => current_address += 9,
-                Opcode::LoadString(_) => current_address += 9,
-                Opcode::LoadBool(_) => current_address += 2,
-                Opcode::LoadVar(name) => current_address += 1 + 1 + name.len(),
-                Opcode::StoreVar(name) => current_address += 1 + 1 + name.len(),
-                Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div | Opcode::Mod |
-                Opcode::Eq | Opcode::NotEq | Opcode::Lt | Opcode::Gt | Opcode::And | Opcode::Or |
-                Opcode::Not | Opcode::Neg | Opcode::Return | Opcode::Print | Opcode::Halt |
-                Opcode::LoadNone | Opcode::GetItem | Opcode::SetItem => current_address += 1,
-                Opcode::Jump(_) => current_address += 9,
-                Opcode::JumpIfFalse(_) => current_address += 9,
-                Opcode::Call(name, _) => current_address += 1 + 1 + name.len() + 1,
-                Opcode::BuildList(_) => current_address += 9,
-                Opcode::DefFn(name, _, body) => current_address += 1 + 1 + name.len() + 1 + 4 + body.len(),
-            }
-        }
-
-        for (_i, op) in self.instructions.iter().enumerate() {
             match op {
                 Opcode::LoadConst(val) => {
                     bytecode.push(0);
@@ -311,13 +336,11 @@ impl BytecodeGenerator {
                 Opcode::Neg => bytecode.push(17),
                 Opcode::Jump(addr_index) => {
                     bytecode.push(18);
-                    let addr = addresses[*addr_index];
-                    bytecode.extend_from_slice(&(addr as i64).to_le_bytes());
+                    bytecode.extend_from_slice(&(*addr_index as i64).to_le_bytes());
                 }
                 Opcode::JumpIfFalse(addr_index) => {
                     bytecode.push(19);
-                    let addr = addresses[*addr_index];
-                    bytecode.extend_from_slice(&(addr as i64).to_le_bytes());
+                    bytecode.extend_from_slice(&(*addr_index as i64).to_le_bytes());
                 }
                 Opcode::Call(name, argc) => {
                     bytecode.push(20);
@@ -347,7 +370,8 @@ impl BytecodeGenerator {
                     bytecode.extend_from_slice(body);
                 }
                 Opcode::GetItem => bytecode.push(28),
-                Opcode::SetItem => bytecode.push(29),
+                Opcode::PrintStr => bytecode.push(29),
+                Opcode::SetItem => bytecode.push(30),
             }
         }
 

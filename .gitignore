@@ -1,3 +1,4 @@
 /target
 upload.bat
 Cargo.lock
+/tests

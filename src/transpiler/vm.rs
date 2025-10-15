@@ -238,20 +238,32 @@ impl VM {
                         _ => return Err("Type error in get_item".to_string()),
                     }
                 }
-                Opcode::SetItem => {
-                    let value = self.stack.pop().ok_or("Stack underflow for value")?;
-                    let index = self.stack.pop().ok_or("Stack underflow for index")?;
-                    let mut list = self.stack.pop().ok_or("Stack underflow for list")?;
-                    match (&mut list, index) {
-                        (Value::List(l), Value::Int(i)) => {
-                            if i < 0 || i as usize >= l.len() {
-                                return Err("Index out of bounds".to_string());
-                            }
-                            l[i as usize] = value;
-                        }
-                        _ => return Err("Type error in set_item".to_string()),
-                    }
-                }
+             Opcode::PrintStr => {
+                 if let Some(Value::Int(index)) = self.stack.pop() {
+                     if let Some(s) = self.strings.get(index as usize) {
+                         println!("{}", s);
+                     } else {
+                         return Err("Invalid string index".to_string());
+                     }
+                 } else {
+                     return Err("PrintStr expects an integer index on the stack".to_string());
+                 }
+             }
+             Opcode::SetItem => {
+                 let index = self.stack.pop().unwrap();
+                 let list = self.stack.pop().unwrap();
+                 let value = self.stack.pop().unwrap();
+                 if let Value::List(mut l) = list {
+                     if let Value::Int(i) = index {
+                         l[i as usize] = value;
+                         self.stack.push(Value::List(l));
+                     } else {
+                         return Err("Index is not an integer".to_string());
+                     }
+                 } else {
+                     return Err("Can only set item on a list".to_string());
+                 }
+             }
             }
         }
         Ok(())
@@ -345,9 +357,10 @@ impl VM {
                 self.pc += body_len;
                 Ok(Opcode::DefFn(name, arity, body))
             }
-            28 => Ok(Opcode::GetItem),
-            29 => Ok(Opcode::SetItem),
-            _ => Err("Unknown opcode".to_string()),
+             28 => Ok(Opcode::GetItem),
+             29 => Ok(Opcode::PrintStr),
+             30 => Ok(Opcode::SetItem),
+             _ => Err("Unknown opcode".to_string()),
         }
     }
 

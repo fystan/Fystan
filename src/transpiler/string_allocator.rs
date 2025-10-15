@@ -16,6 +16,10 @@ impl StringAllocator {
         index
     }
 
+    pub fn get(&self, index: usize) -> Option<&str> {
+        self.arena.get(index).map(|s| s.as_str())
+    }
+
     pub fn get_strings(&self) -> Vec<String> {
         self.arena.clone()
     }

@@ -163,8 +163,22 @@ impl<'a> Lexer<'a> {
             Some(':') => Token::new(TokenType::Colon, ":".to_string()),
             Some('.') => Token::new(TokenType::Dot, ".".to_string()),
             Some('%') => Token::new(TokenType::Mod, "%".to_string()),
-            Some('"') => Token::new(TokenType::String, self.read_string('"')),
-            Some('\'') => Token::new(TokenType::String, self.read_string('\'')),
+            Some('"') => {
+                if self.peek_char() == Some('"') && self.chars.clone().nth(1) == Some('"') {
+                    self.read_char();
+                    self.read_char();
+                    return Token::new(TokenType::String, self.read_multiline_string('"'));
+                }
+                Token::new(TokenType::String, self.read_string('"'))
+            },
+            Some('\'') => {
+                if self.peek_char() == Some('\'') && self.chars.clone().nth(1) == Some('\'') {
+                    self.read_char();
+                    self.read_char();
+                    return Token::new(TokenType::String, self.read_multiline_string('\''));
+                }
+                Token::new(TokenType::String, self.read_string('\''))
+            },
             Some('#') => {
                 self.skip_comment();
                 return self.next_token();
@@ -238,7 +252,9 @@ impl<'a> Lexer<'a> {
         self.read_char(); // Consume the opening quote
         loop {
             match self.ch {
-                Some(ch) if ch == quote => break,
+                Some(ch) if ch == quote => {
+                    break;
+                }
                 None => break, // Unclosed string
                 Some('\\') => {
                     self.read_char();
@@ -256,6 +272,28 @@ impl<'a> Lexer<'a> {
                         None => s.push('\\'), // Trailing backslash
                     }
                 }
+                Some(ch) => s.push(ch),
+            }
+            self.read_char();
+        }
+        s
+    }
+
+    fn read_multiline_string(&mut self, quote: char) -> String {
+        let mut s = String::new();
+        self.read_char(); // Consume the first opening quote
+        loop {
+            match self.ch {
+                Some(ch) if ch == quote => {
+                    if self.peek_char() == Some(quote) && self.chars.clone().nth(1) == Some(quote) {
+                        self.read_char();
+                        self.read_char();
+                        self.read_char(); // Consume the third closing quote
+                        break; // End of multiline string
+                    }
+                    s.push(ch);
+                }
+                None => break, // Unclosed string
                 Some(ch) => s.push(ch),
             }
             self.read_char();
@@ -315,6 +353,27 @@ mod tests {
             let token = lexer.next_token();
             assert_eq!(token.token_type, expected_token.token_type, "token type mismatch");
             assert_eq!(token.literal, expected_token.literal, "token literal mismatch");
+        }
+    }
+
+    #[test]
+    fn test_multiline_string() {
+        let input = r#"print("""hello
+world""")"#;
+        let mut lexer = Lexer::new(input);
+
+        let expected_tokens = vec![
+            Token::new(TokenType::Ident, "print".to_string()),
+            Token::new(TokenType::Lparen, "(".to_string()),
+            Token::new(TokenType::String, "hello\nworld".to_string()),
+            Token::new(TokenType::Rparen, ")".to_string()),
+            Token::new(TokenType::Eof, "".to_string()),
+        ];
+
+        for expected_token in expected_tokens {
+            let token = lexer.next_token();
+            assert_eq!(token.token_type, expected_token.token_type, "token type mismatch for {:?}", expected_token);
+            assert_eq!(token.literal, expected_token.literal, "token literal mismatch for {:?}", expected_token);
         }
     }
 }

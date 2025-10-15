@@ -78,7 +78,7 @@ fn main() {
                 }
             };
 
-            let (bytecode, _string_allocator) = match Transpiler::transpile(&source_code, &target) {
+            let (bytecode, string_allocator) = match Transpiler::transpile(&source_code, &target) {
                 Ok((code, sa)) => (code, sa),
                 Err(e) => {
                     eprintln!("Compilation Error: {}", e);
@@ -110,7 +110,7 @@ fn main() {
                 aot.compile_and_save_executable(&bytecode, &output_path, &target).expect("AOT compilation failed");
             } else if args.mode == "jit" {
                 let mut jit = JITCompiler::new();
-                match jit.compile_and_run(&bytecode) {
+                match jit.compile_and_run(&bytecode, &string_allocator) {
                     Ok(result) => println!("JIT execution result: {}", result),
                     Err(e) => eprintln!("JIT compilation failed: {}", e),
                 }
