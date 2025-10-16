@@ -2,5 +2,3 @@
 upload.bat
 Cargo.lock
 /tests
-*.obj
-*.exe
