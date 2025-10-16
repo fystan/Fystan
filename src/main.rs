@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use fystan::transpiler::{Transpiler, aot::AOTCompiler, jit::JITCompiler};
+use fystan::transpiler::compiler::{Compiler, CompilationMode, CompilationResult};
 use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
 use std::path::Path;
@@ -78,41 +78,52 @@ fn main() {
                 }
             };
 
-            let (bytecode, string_allocator) = match Transpiler::transpile(&source_code, &target) {
-                Ok((code, sa)) => (code, sa),
+            // New Simplified Pipeline
+            let l = fystan::lexer::Lexer::new(&source_code);
+            let mut p = fystan::parser::Parser::new(l);
+            let program = p.parse_program();
+            let errors = p.errors();
+            if !errors.is_empty() {
+                eprintln!("Parser errors: {:?}", errors);
+                std::process::exit(1);
+            }
+
+            let mode = if args.mode == "jit" {
+                CompilationMode::JIT
+            } else {
+                CompilationMode::AOT
+            };
+
+            let compiler = Compiler::new(&target, mode);
+            let result = match compiler.compile(program) {
+                Ok(res) => res,
                 Err(e) => {
                     eprintln!("Compilation Error: {}", e);
                     std::process::exit(1);
                 }
             };
 
-            if args.mode == "aot" {
-                let output_path = match &args.output {
-                    Some(path) => path.clone(),
-                    None => {
-                        let source_path = Path::new(&args.source_path);
-                        let output_filename = source_path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("output");
-
-                        let is_windows_target = target.os == TargetOS::Windows;
-
-                        if is_windows_target {
-                            format!("{}.obj", output_filename)
-                        } else {
-                            format!("{}.o", output_filename)
+            match result {
+                CompilationResult::AOT(object_module) => {
+                    let output_path = match &args.output {
+                        Some(path) => path.clone(),
+                        None => {
+                            let source_path = Path::new(&args.source_path);
+                            let output_filename = source_path.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+                            if target.os == TargetOS::Windows {
+                                format!("{}.obj", output_filename)
+                            } else {
+                                format!("{}.o", output_filename)
+                            }
                         }
-                    }
-                };
+                    };
 
-                let mut aot = AOTCompiler::new(&target);
-                aot.compile_and_save_executable(&bytecode, &output_path, &target).expect("AOT compilation failed");
-            } else if args.mode == "jit" {
-                let mut jit = JITCompiler::new();
-                match jit.compile_and_run(&bytecode, &string_allocator) {
-                    Ok(result) => println!("JIT execution result: {}", result),
-                    Err(e) => eprintln!("JIT compilation failed: {}", e),
+                    let obj_bytes = object_module.finish().emit().unwrap();
+                    fs::write(&output_path, obj_bytes).expect("Failed to write object file.");
+                    println!("AOT mode: Executable object file saved to {}", output_path);
+                }
+                CompilationResult::JIT(return_value) => {
+                    println!("JIT mode: Program executed with return value {}", return_value);
                 }
             }
         }

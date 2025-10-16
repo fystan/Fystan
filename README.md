@@ -26,16 +26,20 @@ Download it on [Fystan Website](https://fystan.qzz.io)
 To compile a Fystan file:
 
 ```bash
-fystan build --target OS:architecture example.fys
+fystan build --target OS:architecture [--mode aot|jit] example.fys
 ```
 
-**Example:**
+**Examples:**
 
 ```bash
+# AOT mode (default): generates object file
 fystan build --target windows:amd64 main.fys
+
+# JIT mode: compiles and runs in memory
+fystan build --mode jit main.fys
 ```
 
-The output will be a **native executable file** for your selected target architecture.
+The output will be a **native executable file** for your selected target architecture (AOT) or the program's return value (JIT).
 All compiler output and errors are in **English**.
 
 ### Supported Targets
@@ -104,9 +108,9 @@ This generates a highly optimized executable in `target/release/fystan.exe` (on 
 Test the compiler with the provided test file:
 
 ```bash
-# AOT mode (saves bytecode) - default
+# AOT mode (default): generates object file
 target/release/fystan build test.fys
 
-# JIT mode (generates executable)
+# JIT mode: compiles and runs in memory
 target/release/fystan build --mode jit test.fys
 ```

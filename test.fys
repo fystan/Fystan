@@ -1,59 +1,6 @@
-# Comprehensive Fystan Test Program (Runnable)
-# NOTE: This version omits the recursive fibonacci function, as nested
-# if/else statements inside functions trigger a parser bug.
-
-# --- Basic Data Types and Variables ---
-print("--- Basic Data Types and Variables ---")
-my_int = 10
-my_float = 3.14
-my_string = "Hello, Fystan!"
-my_bool = True
-
-print(my_int)
-print(my_float)
-print(my_string)
-print(my_bool)
-
-# --- Arithmetic Operations ---
-print("\n--- Arithmetic Operations ---")
-a = 20
-b = 5
-print(a + b)
-print(a - b)
-print(a * b)
-print(a / b)
-print(a % b)
-
-# --- Control Flow: If/Elif/Else ---
-print("\n--- Control Flow: If/Elif/Else ---")
-x = 10
-if x > 5:
-    print("x is greater than 5")
-else:
-    print("x is not greater than 5")
-
-y = 5
-if y > 10:
-    print("y is greater than 10")
-elif y == 5:
-    print("y is equal to 5")
-else:
-    print("y is less than 10")
-
-# --- Control Flow: For Loop ---
-print("\n--- Control Flow: For Loop ---")
-for i in range(5):
-    print(i)
-
-# --- Control Flow: While Loop ---
-print("\n--- Control Flow: While Loop ---")
-count = 0
-while count < 3:
-    print(count)
-    count = count + 1
-
-'''print("\n--- Data Structures: Lists ---")
-int_list = [1, 2, 3, 4, 5]
-# NOTE: Printing the list directly and item access/assignment are not yet supported.
-
-print("\n--- Test Complete ---")'''
+int_list = [10, 20, 30, 40, 50]
+val = int_list[2]
+print(val)
+int_list[2] = 99
+new_val = int_list[2]
+print(new_val)
