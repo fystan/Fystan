@@ -1,6 +1,1 @@
-int_list = [10, 20, 30, 40, 50]
-val = int_list[2]
-print(val)
-int_list[2] = 99
-new_val = int_list[2]
-print(new_val)
+print("Hello from test.fys!")

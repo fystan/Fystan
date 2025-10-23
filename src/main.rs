@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use fystan::transpiler::compiler::{Compiler, CompilationMode, CompilationResult};
+use fystan::transpiler::context::{Compiler, CompilationMode, CompilationResult};
 use fystan::target::{Target, TargetArch, TargetOS};
 use std::fs;
 use std::path::Path;
