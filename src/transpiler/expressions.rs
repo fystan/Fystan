@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use cranelift::prelude::*;
-use cranelift_module::{Module, Linkage};
+use cranelift_module::{Module, Linkage, DataDescription};
 
 use crate::ast::{ExpressionEnum, InfixOperator};
 
@@ -110,10 +110,12 @@ pub fn compile_expression(builder: &mut FunctionBuilder, variables: &mut HashMap
             Ok(builder.ins().iconst(types::I64, lit.value))
         }
         ExpressionEnum::StringLiteral(lit) => {
+            let mut data_description = DataDescription::new();
             let mut data = lit.value.as_bytes().to_vec();
             data.push(0); // Null terminator
+            data_description.define(data.into_boxed_slice());
             let data_id = module.declare_data(&format!(".str.{}", lit.value), Linkage::Local, true, false).unwrap();
-            module.define_data(data_id, &data).unwrap();
+            module.define_data(data_id, &data_description).unwrap();
             let local_id = module.declare_data_in_func(data_id, &mut builder.func);
             Ok(builder.ins().global_value(types::I64, local_id))
         }

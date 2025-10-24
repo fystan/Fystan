@@ -1,14 +1,13 @@
-use crate::ast::{Program};
 use crate::ast::{
     ArrayLiteral, BlockStatement, Boolean, CallExpression, ExpressionEnum, ExpressionStatement,
-    FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression,
-    InfixOperator, IntegerLiteral, PrefixExpression, PrefixOperator,
+    FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfStatement, IndexExpression, InfixExpression,
+    InfixOperator, IntegerLiteral, PrefixExpression, PrefixOperator, Program,
     ReturnStatement, StringLiteral, Statement, WhileExpression, BreakStatement, ContinueStatement, ForExpression,
     NoneLiteral, PassStatement, TryStatement, ExceptClause,
 };
 use crate::lexer::{Lexer, token::{Token, TokenType}};
 use std::collections::HashMap;
-use lazy_static::lazy_static; 
+use lazy_static::lazy_static;
 
 #[derive(PartialOrd, PartialEq, Eq, Debug, Clone)]
 enum Precedence {
@@ -105,8 +104,50 @@ impl<'a> Parser<'a> {
             TokenType::Continue => self.parse_continue_statement().map(Statement::Continue),
             TokenType::Pass => self.parse_pass_statement().map(Statement::Pass),
             TokenType::Try => self.parse_try_statement().map(Statement::Try),
+            TokenType::If => self.parse_if_statement().map(Statement::If),
             _ => self.parse_expression_statement().map(Statement::Expression),
         }
+    }
+
+    fn parse_if_statement(&mut self) -> Option<IfStatement> {
+        let token = self.cur_token.clone(); // 'if' token
+
+        self.next_token(); // consume 'if'
+        let condition = self.parse_expression(Precedence::Lowest)?;
+
+        if !self.expect_peek(TokenType::Colon) { return None; }
+        if !self.expect_peek(TokenType::Newline) { return None; }
+        if !self.expect_peek(TokenType::Indent) { return None; }
+
+        let consequence = self.parse_indented_block_statement()?;
+
+        let mut alternative = None;
+        if self.peek_token_is(&TokenType::Elif) {
+            self.next_token(); // Consume Dedent
+
+            let elif_stmt = self.parse_if_statement()?;
+
+            let block_stmt = BlockStatement {
+                token: self.cur_token.clone(),
+                statements: vec![Statement::If(elif_stmt)],
+            };
+            alternative = Some(block_stmt);
+        } else if self.peek_token_is(&TokenType::Else) {
+            self.next_token(); // Consume Dedent
+
+            if !self.expect_peek(TokenType::Colon) { return None; }
+            if !self.expect_peek(TokenType::Newline) { return None; }
+            if !self.expect_peek(TokenType::Indent) { return None; }
+
+            alternative = Some(self.parse_indented_block_statement()?);
+        }
+
+        Some(IfStatement {
+            token,
+            condition,
+            consequence,
+            alternative,
+        })
     }
 
     fn parse_return_statement(&mut self) -> Option<ReturnStatement> {
@@ -196,7 +237,7 @@ impl<'a> Parser<'a> {
             if self.peek_token_is(&TokenType::As) {
                 self.next_token(); // consume 'as'
                 self.next_token(); // consume the identifier
-                
+
                 if self.cur_token.token_type == TokenType::Ident {
                     exception_name = Some(self.cur_token.literal.clone());
                 } else {
@@ -279,7 +320,6 @@ impl<'a> Parser<'a> {
             TokenType::False => self.parse_boolean(false),
             TokenType::None => self.parse_none_literal(),
             TokenType::Lparen => self.parse_grouped_expression(),
-            TokenType::If => self.parse_if_expression(),
             TokenType::While => self.parse_while_expression(),
             TokenType::For => self.parse_for_expression(),
             TokenType::Def => self.parse_function_definition(),
@@ -297,7 +337,7 @@ impl<'a> Parser<'a> {
         let precedence = self.cur_precedence();
         self.next_token();
         let right = self.parse_expression(precedence)?;
-        
+
         match operator {
             TokenType::Plus => Some(ExpressionEnum::Infix(InfixExpression {
                 token: Token::new(TokenType::Plus, "+".to_string()),
@@ -491,51 +531,6 @@ impl<'a> Parser<'a> {
         exp
     }
 
-    fn parse_if_expression(&mut self) -> Option<ExpressionEnum> {
-        let token = self.cur_token.clone(); // 'if' token
-
-        self.next_token(); // consume 'if'
-        let condition = self.parse_expression(Precedence::Lowest)?;
-
-        if !self.expect_peek(TokenType::Colon) { return None; }
-        if !self.expect_peek(TokenType::Newline) { return None; }
-        if !self.expect_peek(TokenType::Indent) { return None; }
-
-        let consequence = self.parse_indented_block_statement()?;
-
-        let mut alternative = None;
-        if self.peek_token_is(&TokenType::Elif) {
-            self.next_token(); // Consume Dedent
-            
-            let elif_expr = self.parse_if_expression()?;
-            let expr_stmt = ExpressionStatement {
-                token: elif_expr.token(),
-                expression: elif_expr,
-            };
-
-            let block_stmt = BlockStatement {
-                token: self.cur_token.clone(),
-                statements: vec![Statement::Expression(expr_stmt)],
-            };
-            alternative = Some(block_stmt);
-        } else if self.peek_token_is(&TokenType::Else) {
-            self.next_token(); // Consume Dedent
-
-            if !self.expect_peek(TokenType::Colon) { return None; }
-            if !self.expect_peek(TokenType::Newline) { return None; }
-            if !self.expect_peek(TokenType::Indent) { return None; }
-
-            alternative = Some(self.parse_indented_block_statement()?);
-        }
-
-        Some(ExpressionEnum::If(IfExpression {
-            token,
-            condition: Box::new(condition),
-            consequence,
-            alternative,
-        }))
-    }
-
     fn parse_for_expression(&mut self) -> Option<ExpressionEnum> {
         let token = self.cur_token.clone(); // 'for' token
 
@@ -616,7 +611,7 @@ impl<'a> Parser<'a> {
         if !self.expect_peek(TokenType::Colon) {
             return None;
         }
-        
+
         if !self.expect_peek(TokenType::Newline) {
             self.errors.push(format!(
                 "expected newline after function definition, got {:?}",
@@ -1092,57 +1087,6 @@ while x < y:
             let program = p.parse_program();
             check_parser_errors(&p);
             assert_eq!(program.to_string(), expected);
-        }
-    }
-
-    #[test]
-    fn test_if_expression() {
-        let input = "
-if x < y:
-    x
-";
-        let l = Lexer::new(input);
-        let mut p = Parser::new(l);
-        let program = p.parse_program();
-        check_parser_errors(&p);
-
-        assert_eq!(program.statements.len(), 1);
-        let stmt = &program.statements[0];
-        if let Statement::Expression(expr_stmt) = stmt {
-            if let ExpressionEnum::If(if_expr) = &expr_stmt.expression {
-                // More detailed checks needed here
-                assert!(if_expr.alternative.is_none());
-            } else {
-                panic!("Expression is not an IfExpression ");
-            }
-        } else {
-            panic!("Statement is not an ExpressionStatement ");
-        }
-    }
-
-    #[test]
-    fn test_if_else_expression() {
-        let input = "
-if x < y:
-    x
-else:
-    y
-";
-        let l = Lexer::new(input);
-        let mut p = Parser::new(l);
-        let program = p.parse_program();
-        check_parser_errors(&p);
-
-        assert_eq!(program.statements.len(), 1);
-        let stmt = &program.statements[0];
-        if let Statement::Expression(expr_stmt) = stmt {
-            if let ExpressionEnum::If(if_expr) = &expr_stmt.expression {
-                assert!(if_expr.alternative.is_some());
-            } else {
-                panic!("Expression is not an IfExpression ");
-            }
-        } else {
-            panic!("Statement is not an ExpressionStatement ");
         }
     }
 

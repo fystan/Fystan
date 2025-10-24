@@ -84,6 +84,7 @@ pub enum Statement {
     Continue(ContinueStatement),
     Pass(PassStatement),
     Try(TryStatement),
+    If(IfStatement),
 }
 
 impl Node for Statement {
@@ -95,6 +96,7 @@ impl Node for Statement {
             Statement::Continue(s) => s.token_literal(),
             Statement::Pass(s) => s.token_literal(),
             Statement::Try(s) => s.token_literal(),
+            Statement::If(s) => s.token_literal(),
         }
     }
 }
@@ -108,6 +110,7 @@ impl Display for Statement {
             Statement::Continue(s) => write!(f, "{}", s),
             Statement::Pass(s) => write!(f, "{}", s),
             Statement::Try(s) => write!(f, "{}", s),
+            Statement::If(s) => write!(f, "{}", s),
         }
     }
 }
@@ -215,6 +218,31 @@ impl Display for Program {
     }
 }
 
+
+// If Statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfStatement {
+    pub token: Token,
+    pub condition: ExpressionEnum,
+    pub consequence: BlockStatement,
+    pub alternative: Option<BlockStatement>,
+}
+
+impl Node for IfStatement {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Display for IfStatement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "if {} {{ {} }}", self.condition, self.consequence)?;
+        if let Some(alt) = &self.alternative {
+            write!(f, " else {{ {} }}", alt)?;
+        }
+        Ok(())
+    }
+}
 
 // Return Statement
 #[derive(Debug, Clone, PartialEq)]

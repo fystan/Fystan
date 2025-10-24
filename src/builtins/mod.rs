@@ -1,5 +1,5 @@
 
-use std::io::{self, Write};
+
 
 pub fn print(s: &str) {
     println!("{}", s);

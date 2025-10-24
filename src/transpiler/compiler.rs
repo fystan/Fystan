@@ -1,6 +1,6 @@
 use cranelift::prelude::*;
 use cranelift_module::{Module, Linkage};
-use std::collections::HashMap;
+
 
 use crate::ast::Program;
 use super::context::{Compiler, CompilationResult, CompilerModule};
