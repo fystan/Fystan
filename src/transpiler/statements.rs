@@ -46,6 +46,13 @@ pub fn compile_statement(builder: &mut FunctionBuilder, variables: &mut HashMap<
             builder.ins().return_(&[return_value]);
             Ok(())
         }
+        Statement::Class(class_stmt) => {
+            // For now, just compile the body as statements
+            for s in class_stmt.body.statements {
+                compile_statement(builder, variables, s, module, print_func_id, malloc_func_id)?;
+            }
+            Ok(())
+        }
         _ => Err("Unsupported statement".to_string()),
     }
 }

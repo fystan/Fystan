@@ -1,4 +1,177 @@
-if 1 < 2:
-    return 1
-else:
-    return 0
+# =============================================================
+# Import 없는 완전 호환 버전 (Python 3.10~3.13 전용)
+# =============================================================
+
+class ParticleType:
+    ELECTRON = "Electron"
+    PROTON = "Proton"
+    NEUTRON = "Neutron"
+    __match_args__ = ("value",)
+
+    def __init__(self, value: str):
+        self.value = value
+
+
+PLANCK_CONSTANT = 6.62607015e-34
+SPEED_OF_LIGHT = 299_792_458
+
+
+class Particle:
+    __slots__ = ('_name', '_mass', '_charge', '_state')
+    __match_args__ = ('name', 'mass', 'charge')
+
+    def __init__(self, name, /, mass, *, charge=0):
+        if mass <= 0:
+            raise ValueError("질량은 0보다 커야 합니다.")
+        self._name = name
+        self._mass = mass
+        self._charge = charge
+        self._state = {"spin": 0.5, "energy": 0.0}
+
+    @property
+    def name(self): return self._name
+    @property
+    def mass(self): return self._mass
+    @mass.setter
+    def mass(self, value):
+        if value <= 0: raise ValueError("질량은 0보다 커야 합니다.")
+        self._mass = value
+
+    def __repr__(self):
+        return (f"Particle(name={self.name!r}, mass={self.mass:.2e}, "
+                f"charge={self._charge}, state={self._state})")
+
+    def calculate_relativistic_energy(self):
+        gamma = 1.0
+        energy = (self._mass * SPEED_OF_LIGHT ** 2) * gamma
+        if (energy_val := energy) > 1e6:
+            print(f"에너지가 높습니다: {energy_val:.2e} J")
+        self._state["energy"] = energy_val
+        return energy_val
+
+
+class Processor:
+    def __init__(self, initial_items=None):
+        self.items = initial_items if initial_items is not None else []
+
+    def process(self, item):
+        print(f"Processing item: {item}")
+        self.items.append(item)
+        return item
+
+    def get_all(self):
+        return self.items
+
+
+def create_processor(default_item_type=Particle):
+    print(f"Creating a processor for type: {default_item_type.__name__}")
+    return Processor()
+
+
+class ParticleStream:
+    def __init__(self, particle_types, count):
+        self.particle_types = particle_types
+        self.count = count
+        self.index = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.index >= self.count:
+            raise StopAsyncIteration
+        await asyncio_sleep_simulator(0.05)
+        p_type = self.particle_types[self.index % len(self.particle_types)]
+        self.index += 1
+        mass = 9.109e-31 if p_type == "Electron" else 1.672e-27
+        return Particle(f"{p_type}-{self.index}", mass=mass)
+
+
+async def asyncio_sleep_simulator(seconds):
+    print(f"  ... (Simulating async wait {seconds}s)")
+
+
+async def run_factory():
+    print("\n--- Starting Quantum Factory ---")
+    stream = ParticleStream(["Electron", "Proton"], 3)
+    async for particle in stream:
+        print(f"  > Factory produced: {particle.name}")
+        particle.calculate_relativistic_energy()
+    print("--- Quantum Factory Finished ---")
+
+
+def handle_event(event):
+    print(f"\nHandling event: {event}")
+    match event:
+        case {"type": "COLLISION", "particle1": p1, "particle2": p2}:
+            print(f"  -> Collision detected between {p1} and {p2}")
+        case {"type": "DECAY", "particle": Particle(name=name, mass=m)} if m > 1e-28:
+            print(f"  -> Heavy particle decayed: {name} (mass: {m:.2e})")
+        case {"type": "DATA_BURST", "data": [x, y, *rest]}:
+            print(f"  -> Data burst received: x={x}, y={y}, rest={rest}")
+        case {"type": "STATUS_UPDATE", "details": {**kwargs}}:
+            print(f"  -> Status updated with details: {kwargs}")
+        case _:
+            print("  -> Unknown event type.")
+
+
+class PowerSupply:
+    def __enter__(self):
+        print("Power supply ON."); return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print("Power supply OFF.")
+        if exc_type: print(f"  Error: {exc_type.__name__}")
+        return True
+
+
+async def main():
+    print("="*60)
+    print("   Python Syntax Showcase (Import-free Compatible Version)")
+    print("="*60)
+
+    processor = create_processor()
+    e = Particle("Electron-A", 9.109e-31, charge=-1)
+    p = Particle("Proton-B", 1.672e-27, charge=1)
+    processor.process(e); processor.process(p)
+    print(f"Processor holds: {processor.get_all()}")
+
+    await run_factory()
+
+    handle_event({"type": "COLLISION", "particle1": "e-", "particle2": "p+"})
+    handle_event({"type": "DECAY", "particle": Particle("Neutron-X", 1.674e-27)})
+    handle_event({"type": "DATA_BURST", "data": [42, 84, 168, 336]})
+    handle_event({"type": "STATUS_UPDATE", "details": {"temp": 298, "pressure": 1.0}})
+    handle_event({"type": "UNKNOWN"})
+
+    with PowerSupply():
+        try:
+            bad = Particle("Tachyon", -1.0)
+        except ValueError as e:
+            print(f"Caught error: {e}")
+        finally:
+            print("Cleaning up resources.")
+
+    nums = list(range(10))
+    print(f"Even squares: {[x**2 for x in nums if x % 2 == 0]}")
+    print(f"Cube dict: {{x: x**3 for x in range(5)}}")
+    print(f"Filtered & mapped: {[x*2 for x in nums if x > 5]}")
+    print(f"Merged dict: {{'a':1,'b':2}} | {{'b':3,'c':4}} -> { {'a':1,'b':3,'c':4} }")
+
+    print("="*60)
+    print("         Test Completed Successfully")
+    print("="*60)
+
+
+# =============================================================
+# Python 3.12 이하 호환 실행 진입점 (Top-level await 미지원)
+# =============================================================
+
+def _simple_asyncio_run(coro):
+    """import 없이 async 함수 실행 (간단 루프 시뮬레이터)"""
+    try:
+        coro.send(None)
+    except StopIteration:
+        pass
+
+# 실제 실행
+_simple_asyncio_run(main())

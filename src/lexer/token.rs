@@ -29,6 +29,7 @@ pub enum TokenType {
     AsteriskEq,
     SlashEq,
     Mod,
+    Power,
 
     // Delimiters
     Comma,
@@ -81,6 +82,7 @@ pub enum TokenType {
     Except,
     Finally,
     Raise,
+    At, // @
 }
 
 #[derive(Debug, PartialEq, Clone, Eq, Hash)]
@@ -142,6 +144,7 @@ impl Token {
             "except" => TokenType::Except,
             "finally" => TokenType::Finally,
             "raise" => TokenType::Raise,
+            "@" => TokenType::At,
             _ => TokenType::Ident,
         }
     }

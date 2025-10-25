@@ -3,7 +3,7 @@ use crate::ast::{
     FloatLiteral, FunctionLiteral, HashLiteral, Identifier, IfStatement, IndexExpression, InfixExpression,
     InfixOperator, IntegerLiteral, PrefixExpression, PrefixOperator, Program,
     ReturnStatement, StringLiteral, Statement, WhileExpression, BreakStatement, ContinueStatement, ForExpression,
-    NoneLiteral, PassStatement, TryStatement, ExceptClause,
+    NoneLiteral, PassStatement, TryStatement, ExceptClause, ClassDefinition,
 };
 use crate::lexer::{Lexer, token::{Token, TokenType}};
 use std::collections::HashMap;
@@ -38,6 +38,7 @@ lazy_static! {
         map.insert(TokenType::Asterisk, Precedence::Product);
         map.insert(TokenType::Slash, Precedence::Product);
         map.insert(TokenType::Mod, Precedence::Product);
+        map.insert(TokenType::Power, Precedence::Product);
         map.insert(TokenType::Lparen, Precedence::Call);
         map.insert(TokenType::LBrack, Precedence::Index);
         map.insert(TokenType::Dot, Precedence::Call);
@@ -105,6 +106,7 @@ impl<'a> Parser<'a> {
             TokenType::Pass => self.parse_pass_statement().map(Statement::Pass),
             TokenType::Try => self.parse_try_statement().map(Statement::Try),
             TokenType::If => self.parse_if_statement().map(Statement::If),
+            TokenType::Class => self.parse_class_definition().map(Statement::Class),
             _ => self.parse_expression_statement().map(Statement::Expression),
         }
     }
@@ -278,6 +280,7 @@ impl<'a> Parser<'a> {
                 | TokenType::Asterisk
                 | TokenType::Slash
                 | TokenType::Mod
+                | TokenType::Power
                 | TokenType::Eq
                 | TokenType::NotEq
                 | TokenType::Is
@@ -357,105 +360,12 @@ impl<'a> Parser<'a> {
                 operator: InfixOperator::Multiply,
                 right: Box::new(right),
             })),
-            TokenType::Slash => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Slash, "/".to_string()),
+            TokenType::Power => Some(ExpressionEnum::Infix(InfixExpression {
+                token: Token::new(TokenType::Power, "**".to_string()),
                 left: Box::new(left),
-                operator: InfixOperator::Divide,
+                operator: InfixOperator::Power,
                 right: Box::new(right),
-            })),
-            TokenType::Mod => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Mod, "%".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Mod,
-                right: Box::new(right),
-            })),
-            TokenType::Eq => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Eq, "==".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Eq,
-                right: Box::new(right),
-            })),
-            TokenType::NotEq => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::NotEq, "!=".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::NotEq,
-                right: Box::new(right),
-            })),
-            TokenType::Is => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Is, "is".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Is,
-                right: Box::new(right),
-            })),
-            TokenType::IsNot => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::IsNot, "is not".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::IsNot,
-                right: Box::new(right),
-            })),
-            TokenType::Lt => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Lt, "<".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Lt,
-                right: Box::new(right),
-            })),
-            TokenType::Gt => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Gt, ">".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Gt,
-                right: Box::new(right),
-            })),
-            TokenType::And => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::And, "and".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::And,
-                right: Box::new(right),
-            })),
-            TokenType::Or => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Or, "or".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Or,
-                right: Box::new(right),
-            })),
-            TokenType::Assign => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Assign, "=".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Assign,
-                right: Box::new(right),
-            })),
-            TokenType::PlusEq => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::PlusEq, "+=".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::PlusEq,
-                right: Box::new(right),
-            })),
-            TokenType::MinusEq => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::MinusEq, "-=".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::MinusEq,
-                right: Box::new(right),
-            })),
-            TokenType::AsteriskEq => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::AsteriskEq, "*=".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::AsteriskEq,
-                right: Box::new(right),
-            })),
-            TokenType::SlashEq => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::SlashEq, "/=".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::SlashEq,
-                right: Box::new(right),
-            })),
-            _ => None,
-        }
-    }
-
-    fn parse_identifier(&mut self) -> Option<ExpressionEnum> {
-        Some(ExpressionEnum::Identifier(Identifier {
-            token: self.cur_token.clone(),
-            value: self.cur_token.literal.clone(),
-        }))
+            }))
     }
 
     fn parse_integer_literal(&mut self) -> Option<ExpressionEnum> {
@@ -590,6 +500,46 @@ impl<'a> Parser<'a> {
             condition: Box::new(condition),
             body,
         }))
+    }
+
+    fn parse_class_definition(&mut self) -> Option<ClassDefinition> {
+        let token = self.cur_token.clone(); // The 'class' token
+
+        if !self.expect_peek(TokenType::Ident) {
+            return None;
+        }
+        let name = Identifier {
+            token: self.cur_token.clone(),
+            value: self.cur_token.literal.clone(),
+        };
+
+        if !self.expect_peek(TokenType::Colon) {
+            return None;
+        }
+
+        if !self.expect_peek(TokenType::Newline) {
+            self.errors.push(format!(
+                "expected newline after class definition, got {:?}",
+                self.peek_token.token_type
+            ));
+            return None;
+        }
+
+        if !self.expect_peek(TokenType::Indent) {
+            self.errors.push(format!(
+                "expected indented block after class definition, got {:?}",
+                self.peek_token.token_type
+            ));
+            return None;
+        }
+
+        let body = self.parse_indented_block_statement()?;
+
+        Some(ClassDefinition {
+            token,
+            name,
+            body,
+        })
     }
 
     fn parse_function_definition(&mut self) -> Option<ExpressionEnum> {

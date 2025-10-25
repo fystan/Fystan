@@ -104,10 +104,13 @@ fn compile_index_expression(builder: &mut FunctionBuilder, variables: &mut HashM
     Ok(value)
 }
 
-pub fn compile_expression(builder: &mut FunctionBuilder, variables: &mut HashMap<String, (Variable, types::Type)>, expr: ExpressionEnum, module: &mut dyn Module, print_func_id: cranelift_module::FuncId, malloc_func_id: cranelift_module::FuncId) -> Result<Value, String> {
+pub fn compile_expression(builder: &mut FunctionBuilder, variables: &mut HashMap<String, (Variable, types::Type)>, expr: ExpressionEnum, module: &mut dyn Module, print_func_id: cranelift_module::FuncId, malloc_func_id: cranelift_module::FuncId) -> Result<(Value, types::Type), String> {
     match expr {
         ExpressionEnum::IntegerLiteral(lit) => {
-            Ok(builder.ins().iconst(types::I64, lit.value))
+            Ok((builder.ins().iconst(types::I64, lit.value), types::I64))
+        }
+        ExpressionEnum::FloatLiteral(lit) => {
+            Ok((builder.ins().f64const(lit.value), types::F64))
         }
         ExpressionEnum::StringLiteral(lit) => {
             let mut data_description = DataDescription::new();

@@ -99,6 +99,10 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         let token = match self.ch {
+            Some('@') => {
+                self.read_char();
+                Token::new(TokenType::At, "@".to_string())
+            }
             Some('=') => {
                 if self.peek_char() == Some('=') {
                     self.read_char();
@@ -132,7 +136,10 @@ impl<'a> Lexer<'a> {
                 }
             }
             Some('*') => {
-                if self.peek_char() == Some('=') {
+                if self.peek_char() == Some('*') {
+                    self.read_char();
+                    Token::new(TokenType::Power, "**".to_string())
+                } else if self.peek_char() == Some('=') {
                     self.read_char();
                     Token::new(TokenType::AsteriskEq, "*=".to_string())
                 } else {

@@ -16,3 +16,8 @@ pub extern "C" fn puts(s: *const i8) -> i32 {
         Err(_) => -1,
     }
 }
+
+#[no_mangle]
+pub extern "C" fn pow_func(base: f64, exp: f64) -> f64 {
+    base.powf(exp)
+}

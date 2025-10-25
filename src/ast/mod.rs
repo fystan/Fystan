@@ -31,6 +31,7 @@ impl fmt::Display for InfixOperator {
             InfixOperator::MinusEq => "-=",
             InfixOperator::AsteriskEq => "*=",
             InfixOperator::SlashEq => "/=",
+            InfixOperator::Power => "**",
         };
         write!(f, "{}", s)
     }
@@ -73,6 +74,7 @@ pub enum InfixOperator {
     MinusEq,    // -=
     AsteriskEq, // *=
     SlashEq,    // /=
+    Power,      // **
 }
 
 // Statement Enum
@@ -85,6 +87,7 @@ pub enum Statement {
     Pass(PassStatement),
     Try(TryStatement),
     If(IfStatement),
+    Class(ClassDefinition),
 }
 
 impl Node for Statement {
@@ -97,6 +100,7 @@ impl Node for Statement {
             Statement::Pass(s) => s.token_literal(),
             Statement::Try(s) => s.token_literal(),
             Statement::If(s) => s.token_literal(),
+            Statement::Class(s) => s.token_literal(),
         }
     }
 }
@@ -111,6 +115,7 @@ impl Display for Statement {
             Statement::Pass(s) => write!(f, "{}", s),
             Statement::Try(s) => write!(f, "{}", s),
             Statement::If(s) => write!(f, "{}", s),
+            Statement::Class(s) => write!(f, "{}", s),
         }
     }
 }
@@ -218,6 +223,26 @@ impl Display for Program {
     }
 }
 
+
+// Class Definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassDefinition {
+    pub token: Token,
+    pub name: Identifier,
+    pub body: BlockStatement,
+}
+
+impl Node for ClassDefinition {
+    fn token_literal(&self) -> String {
+        self.token.literal.clone()
+    }
+}
+
+impl Display for ClassDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "class {} {{ {} }}", self.name, self.body)
+    }
+}
 
 // If Statement
 #[derive(Debug, Clone, PartialEq)]
