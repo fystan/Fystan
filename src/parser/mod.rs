@@ -270,42 +270,27 @@ impl<'a> Parser<'a> {
         Some(ExpressionStatement { token, expression })
     }
 
+    /// Parses expressions with precedence handling
     fn parse_expression(&mut self, precedence: Precedence) -> Option<ExpressionEnum> {
         let mut left_exp = self.parse_prefix()?;
 
         while precedence < self.peek_precedence() {
-            match self.peek_token.token_type {
-                TokenType::Plus
-                | TokenType::Minus
-                | TokenType::Asterisk
-                | TokenType::Slash
-                | TokenType::Mod
-                | TokenType::Power
-                | TokenType::Eq
-                | TokenType::NotEq
-                | TokenType::Is
-                | TokenType::IsNot
-                | TokenType::Lt
-                | TokenType::Gt
-                | TokenType::And
-                | TokenType::Or
-                | TokenType::Assign
-                | TokenType::PlusEq
-                | TokenType::MinusEq
-                | TokenType::AsteriskEq
-                | TokenType::SlashEq => {
-                    self.next_token();
-                    left_exp = self.parse_infix(left_exp)?;
-                }
-                TokenType::Lparen => {
-                    self.next_token();
-                    left_exp = self.parse_call_expression(left_exp)?;
-                }
-                TokenType::LBrack => {
-                    self.next_token();
-                    left_exp = self.parse_index_expression(left_exp)?;
-                }
-                _ => return Some(left_exp),
+            if matches!(self.peek_token.token_type,
+                TokenType::Plus | TokenType::Minus | TokenType::Asterisk | TokenType::Slash |
+                TokenType::Mod | TokenType::Power | TokenType::Eq | TokenType::NotEq |
+                TokenType::Is | TokenType::IsNot | TokenType::Lt | TokenType::Gt |
+                TokenType::And | TokenType::Or | TokenType::Assign | TokenType::PlusEq |
+                TokenType::MinusEq | TokenType::AsteriskEq | TokenType::SlashEq) {
+                self.next_token();
+                left_exp = self.parse_infix(left_exp)?;
+            } else if self.peek_token.token_type == TokenType::Lparen {
+                self.next_token();
+                left_exp = self.parse_call_expression(left_exp)?;
+            } else if self.peek_token.token_type == TokenType::LBrack {
+                self.next_token();
+                left_exp = self.parse_index_expression(left_exp)?;
+            } else {
+                return Some(left_exp);
             }
         }
         Some(left_exp)
@@ -313,7 +298,10 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix(&mut self) -> Option<ExpressionEnum> {
         match self.cur_token.token_type {
-            TokenType::Ident => self.parse_identifier(),
+            TokenType::Ident => Some(ExpressionEnum::Identifier(Identifier {
+                token: self.cur_token.clone(),
+                value: self.cur_token.literal.clone(),
+            })),
             TokenType::Int => self.parse_integer_literal(),
             TokenType::Float => self.parse_float_literal(),
             TokenType::String => self.parse_string_literal(),
@@ -341,31 +329,38 @@ impl<'a> Parser<'a> {
         self.next_token();
         let right = self.parse_expression(precedence)?;
 
-        match operator {
-            TokenType::Plus => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Plus, "+".to_string()),
+        if let Some((tt, lit, op)) = match operator {
+            TokenType::Plus => Some((TokenType::Plus, "+", InfixOperator::Plus)),
+            TokenType::Minus => Some((TokenType::Minus, "-", InfixOperator::Minus)),
+            TokenType::Asterisk => Some((TokenType::Asterisk, "*", InfixOperator::Multiply)),
+            TokenType::Slash => Some((TokenType::Slash, "/", InfixOperator::Divide)),
+            TokenType::Mod => Some((TokenType::Mod, "%", InfixOperator::Mod)),
+            TokenType::Power => Some((TokenType::Power, "**", InfixOperator::Power)),
+            TokenType::Eq => Some((TokenType::Eq, "==", InfixOperator::Eq)),
+            TokenType::NotEq => Some((TokenType::NotEq, "!=", InfixOperator::NotEq)),
+            TokenType::Is => Some((TokenType::Is, "is", InfixOperator::Is)),
+            TokenType::IsNot => Some((TokenType::IsNot, "is not", InfixOperator::IsNot)),
+            TokenType::Lt => Some((TokenType::Lt, "<", InfixOperator::Lt)),
+            TokenType::Gt => Some((TokenType::Gt, ">", InfixOperator::Gt)),
+            TokenType::And => Some((TokenType::And, "and", InfixOperator::And)),
+            TokenType::Or => Some((TokenType::Or, "or", InfixOperator::Or)),
+            TokenType::Assign => Some((TokenType::Assign, "=", InfixOperator::Assign)),
+            TokenType::PlusEq => Some((TokenType::PlusEq, "+=", InfixOperator::PlusEq)),
+            TokenType::MinusEq => Some((TokenType::MinusEq, "-=", InfixOperator::MinusEq)),
+            TokenType::AsteriskEq => Some((TokenType::AsteriskEq, "*=", InfixOperator::AsteriskEq)),
+            TokenType::SlashEq => Some((TokenType::SlashEq, "/=", InfixOperator::SlashEq)),
+            _ => None,
+        } {
+            Some(ExpressionEnum::Infix(InfixExpression {
+                token: Token::new(tt, lit.to_string()),
                 left: Box::new(left),
-                operator: InfixOperator::Plus,
-                right: Box::new(right),
-            })),
-            TokenType::Minus => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Minus, "-".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Minus,
-                right: Box::new(right),
-            })),
-            TokenType::Asterisk => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Asterisk, "*".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Multiply,
-                right: Box::new(right),
-            })),
-            TokenType::Power => Some(ExpressionEnum::Infix(InfixExpression {
-                token: Token::new(TokenType::Power, "**".to_string()),
-                left: Box::new(left),
-                operator: InfixOperator::Power,
+                operator: op,
                 right: Box::new(right),
             }))
+        } else {
+            self.errors.push(format!("Unsupported infix operator: {:?}", operator));
+            None
+        }
     }
 
     fn parse_integer_literal(&mut self) -> Option<ExpressionEnum> {

@@ -4,14 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.48", features = ["derive"] }
-lazy_static = "1.5.0"
-rand = "0.8.5"
-cranelift = "0.105.0"
-cranelift-module = "0.105.0"
-cranelift-jit = "0.105.0"
-cranelift-object = "0.105.0"
-cranelift-native = "0.105.0"
+lazy_static = "1.4"
+clap = { version = "4.0", features = ["derive"] }
 
 [profile.release]
 opt-level = 3

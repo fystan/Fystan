@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
-use fystan::transpiler::context::{Compiler, CompilationMode, CompilationResult};
 use fystan::target::{Target, TargetArch, TargetOS};
+use fystan::transpiler::context::{CompilationMode, CompilationResult, Compiler};
 use std::fs;
 use std::path::Path;
 
@@ -71,7 +71,9 @@ fn main() {
                     } else if cfg!(target_arch = "aarch64") {
                         TargetArch::AArch64
                     } else {
-                        eprintln!("Error: Unsupported host architecture. Please specify a --target.");
+                        eprintln!(
+                            "Error: Unsupported host architecture. Please specify a --target."
+                        );
                         std::process::exit(1);
                     };
                     Target::new(os, arch).unwrap()
@@ -79,7 +81,9 @@ fn main() {
             };
 
             // New Simplified Pipeline
+            // Lex the source code into tokens
             let l = fystan::lexer::Lexer::new(&source_code);
+            // Parse tokens into AST
             let mut p = fystan::parser::Parser::new(l);
             let program = p.parse_program();
             let errors = p.errors();
@@ -109,7 +113,10 @@ fn main() {
                         Some(path) => path.clone(),
                         None => {
                             let source_path = Path::new(&args.source_path);
-                            let output_filename = source_path.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+                            let output_filename = source_path
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("output");
                             if target.os == TargetOS::Windows {
                                 format!("{}.obj", output_filename)
                             } else {
@@ -118,12 +125,15 @@ fn main() {
                         }
                     };
 
-                    let obj_bytes = object_module.finish().emit().unwrap();
+                    let obj_bytes = object_module;
                     fs::write(&output_path, obj_bytes).expect("Failed to write object file.");
                     println!("AOT mode: Executable object file saved to {}", output_path);
                 }
                 CompilationResult::JIT(return_value) => {
-                    println!("JIT mode: Program executed with return value {}", return_value);
+                    println!(
+                        "JIT mode: Program executed with return value {}",
+                        return_value
+                    );
                 }
             }
         }

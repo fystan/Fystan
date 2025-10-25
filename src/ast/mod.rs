@@ -1,7 +1,46 @@
+use crate::lexer::token::Token;
+use std::fmt::{Display, Formatter, Result};
+use std::hash::Hash;
+use std::collections::HashMap;
 
-use std::fmt;
-impl fmt::Display for PrefixOperator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+// Common traits
+pub trait Node: Display {
+    fn token_literal(&self) -> String;
+}
+pub trait Expression: Node {}
+
+// Operator enums
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PrefixOperator {
+    Minus, // -
+    Not,   // not
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InfixOperator {
+    Plus,       // +
+    Minus,      // -
+    Multiply,   // *
+    Divide,     // /
+    Mod,        // %
+    Eq,         // ==
+    NotEq,      // !=
+    Is,         // is
+    IsNot,      // is not
+    Lt,         // <
+    Gt,         // >
+    And,        // and
+    Or,         // or
+    Assign,     // =
+    PlusEq,     // +=
+    MinusEq,    // -=
+    AsteriskEq, // *=
+    SlashEq,    // /=
+    Power,      // **
+}
+
+impl Display for PrefixOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
             PrefixOperator::Not => "not",
             PrefixOperator::Minus => "-",
@@ -10,8 +49,8 @@ impl fmt::Display for PrefixOperator {
     }
 }
 
-impl fmt::Display for InfixOperator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for InfixOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
             InfixOperator::Plus => "+",
             InfixOperator::Minus => "-",
@@ -36,48 +75,8 @@ impl fmt::Display for InfixOperator {
         write!(f, "{}", s)
     }
 }
-use crate::lexer::token::Token;
-use std::fmt::{Display, Formatter};
-use std::hash::Hash;
-use std::collections::HashMap;
 
-// 공통 트레이트
-pub trait Node: Display {
-    fn token_literal(&self) -> String;
-}
-pub trait Expression: Node {}
-
-// 연산자 열거형
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PrefixOperator {
-    Minus, // -
-    Not,   // not
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InfixOperator {
-    Plus,       // +
-    Minus,      // -
-    Multiply,   // *
-    Divide,     // /
-    Mod,        // %
-    Eq,         // ==
-    NotEq,      // !=
-    Is,         // is
-    IsNot,      // is not
-    Lt,         // <
-    Gt,         // >
-    And,        // &&
-    Or,         // ||
-    Assign,     // =
-    PlusEq,     // +=
-    MinusEq,    // -=
-    AsteriskEq, // *=
-    SlashEq,    // /=
-    Power,      // **
-}
-
-// Statement Enum
+// Statement enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Return(ReturnStatement),
@@ -106,7 +105,7 @@ impl Node for Statement {
 }
 
 impl Display for Statement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Statement::Return(s) => write!(f, "{}", s),
             Statement::Expression(s) => write!(f, "{}", s),
@@ -140,7 +139,7 @@ pub enum ExpressionEnum {
 }
 
 impl Display for ExpressionEnum {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ExpressionEnum::Identifier(e) => write!(f, "{}", e),
             ExpressionEnum::IntegerLiteral(e) => write!(f, "{}", e),
@@ -215,7 +214,7 @@ pub struct Program {
 }
 
 impl Display for Program {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         for stmt in &self.statements {
             write!(f, "{}", stmt)?;
         }
@@ -224,7 +223,7 @@ impl Display for Program {
 }
 
 
-// Class Definition
+// Class definition
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassDefinition {
     pub token: Token,
@@ -239,12 +238,12 @@ impl Node for ClassDefinition {
 }
 
 impl Display for ClassDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "class {} {{ {} }}", self.name, self.body)
     }
 }
 
-// If Statement
+// If statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfStatement {
     pub token: Token,
@@ -260,7 +259,7 @@ impl Node for IfStatement {
 }
 
 impl Display for IfStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "if {} {{ {} }}", self.condition, self.consequence)?;
         if let Some(alt) = &self.alternative {
             write!(f, " else {{ {} }}", alt)?;
@@ -269,7 +268,7 @@ impl Display for IfStatement {
     }
 }
 
-// Return Statement
+// Return statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnStatement {
     pub token: Token,
@@ -283,12 +282,12 @@ impl Node for ReturnStatement {
 }
 
 impl Display for ReturnStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} {}", self.token_literal(), self.return_value)
     }
 }
 
-// Break Statement
+// Break statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct BreakStatement {
     pub token: Token,
@@ -301,12 +300,12 @@ impl Node for BreakStatement {
 }
 
 impl Display for BreakStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.token_literal())
     }
 }
 
-// Continue Statement
+// Continue statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContinueStatement {
     pub token: Token,
@@ -319,12 +318,12 @@ impl Node for ContinueStatement {
 }
 
 impl Display for ContinueStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.token_literal())
     }
 }
 
-// Expression Statement
+// Expression statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStatement {
     pub token: Token,
@@ -337,12 +336,12 @@ impl Node for ExpressionStatement {
     }
 }
 impl Display for ExpressionStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.expression)
     }
 }
 
-// Block Statement
+// Block statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement {
     pub token: Token,
@@ -355,7 +354,7 @@ impl Node for BlockStatement {
     }
 }
 impl Display for BlockStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         for stmt in &self.statements {
             write!(f, "{}", stmt)?;
         }
@@ -377,12 +376,12 @@ impl Node for Identifier {
 }
 impl Expression for Identifier {}
 impl Display for Identifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.value)
     }
 }
 
-// Integer Literal
+// Integer literal
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IntegerLiteral {
     pub token: Token,
@@ -396,12 +395,12 @@ impl Node for IntegerLiteral {
 }
 impl Expression for IntegerLiteral {}
 impl Display for IntegerLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.value)
     }
 }
 
-// Float Literal
+// Float literal
 #[derive(Debug, Clone, PartialEq)]
 pub struct FloatLiteral {
     pub token: Token,
@@ -415,12 +414,12 @@ impl Node for FloatLiteral {
 }
 impl Expression for FloatLiteral {}
 impl Display for FloatLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{:?}", self.value)
     }
 }
 
-// String Literal
+// String literal
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StringLiteral {
     pub token: Token,
@@ -434,7 +433,7 @@ impl Node for StringLiteral {
 }
 impl Expression for StringLiteral {}
 impl Display for StringLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "\"{}\"", self.value)
     }
 }
@@ -453,14 +452,13 @@ impl Node for Boolean {
 }
 impl Expression for Boolean {}
 impl Display for Boolean {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.value)
     }
 }
 
-// Prefix Expression
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Prefix expression
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrefixExpression {
     pub token: Token,
     pub operator: PrefixOperator,
@@ -474,14 +472,13 @@ impl Node for PrefixExpression {
 }
 impl Expression for PrefixExpression {}
 impl Display for PrefixExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "({}{})", self.operator.to_string(), self.right)
     }
 }
 
-// Infix Expression
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Infix expression
+#[derive(Debug, Clone, PartialEq)]
 pub struct InfixExpression {
     pub token: Token,
     pub left: Box<ExpressionEnum>,
@@ -496,14 +493,13 @@ impl Node for InfixExpression {
 }
 impl Expression for InfixExpression {}
 impl Display for InfixExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "({} {} {})", self.left, self.operator.to_string(), self.right)
     }
 }
 
-// If Expression
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// If expression
+#[derive(Debug, Clone, PartialEq)]
 pub struct IfExpression {
     pub token: Token,
     pub condition: Box<ExpressionEnum>,
@@ -518,7 +514,7 @@ impl Node for IfExpression {
 }
 impl Expression for IfExpression {}
 impl Display for IfExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "if {} {{ {} }}", self.condition, self.consequence)?;
         if let Some(alt) = &self.alternative {
             write!(f, " else {{ {} }}", alt)?;
@@ -527,7 +523,7 @@ impl Display for IfExpression {
     }
 }
 
-// While Expression
+// While expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct WhileExpression {
     pub token: Token,
@@ -544,12 +540,12 @@ impl Node for WhileExpression {
 impl Expression for WhileExpression {}
 
 impl Display for WhileExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "while ({}) {}", self.condition, self.body)
     }
 }
 
-// For Expression
+// For expression
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForExpression {
     pub token: Token, // The 'for' token
@@ -567,7 +563,7 @@ impl Node for ForExpression {
 impl Expression for ForExpression {}
 
 impl Display for ForExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "for ({} in {}) {}",
@@ -577,9 +573,8 @@ impl Display for ForExpression {
 }
 
 
-// Function Literal
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Function literal
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionLiteral {
     pub token: Token,
     pub name: Identifier,
@@ -594,15 +589,14 @@ impl Node for FunctionLiteral {
 }
 impl Expression for FunctionLiteral {}
 impl Display for FunctionLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let params: Vec<String> = self.parameters.iter().map(|p| p.to_string()).collect();
         write!(f, "{}({}) {} {}", self.token_literal(), self.name, params.join(", "), self.body)
     }
 }
 
-// Call Expression
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Call expression
+#[derive(Debug, Clone, PartialEq)]
 pub struct CallExpression {
     pub token: Token,
     pub function: Box<ExpressionEnum>,
@@ -616,15 +610,14 @@ impl Node for CallExpression {
 }
 impl Expression for CallExpression {}
 impl Display for CallExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let args: Vec<String> = self.arguments.iter().map(|a| a.to_string()).collect();
         write!(f, "{}({})", self.function, args.join(", "))
     }
 }
 
-// 배열 리터럴
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Array literal
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArrayLiteral {
     pub token: Token,
     pub elements: Vec<ExpressionEnum>,
@@ -637,15 +630,14 @@ impl Node for ArrayLiteral {
 }
 impl Expression for ArrayLiteral {}
 impl Display for ArrayLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let elements: Vec<String> = self.elements.iter().map(|e| e.to_string()).collect();
         write!(f, "[{}]", elements.join(", "))
     }
 }
 
-// 인덱스 표현식
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Index expression
+#[derive(Debug, Clone, PartialEq)]
 pub struct IndexExpression {
     pub token: Token,
     pub left: Box<ExpressionEnum>,
@@ -659,14 +651,13 @@ impl Node for IndexExpression {
 }
 impl Expression for IndexExpression {}
 impl Display for IndexExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "({}[{}])", self.left, self.index)
     }
 }
 
-// 해시(HashMap) 리터럴
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+// Hash literal
+#[derive(Debug, Clone, PartialEq)]
 pub struct HashLiteral {
     pub token: Token,
     pub pairs: HashMap<String, ExpressionEnum>,
@@ -679,7 +670,7 @@ impl Node for HashLiteral {
 }
 impl Expression for HashLiteral {}
 impl Display for HashLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pairs: Vec<String> = self.pairs
             .iter()
             .map(|(k, v)| format!("{}: {}", k, v))
@@ -688,7 +679,7 @@ impl Display for HashLiteral {
     }
 }
 
-// None 리터럴
+// None literal
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NoneLiteral {
     pub token: Token,
@@ -701,12 +692,12 @@ impl Node for NoneLiteral {
 }
 impl Expression for NoneLiteral {}
 impl Display for NoneLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "None")
     }
 }
 
-// Pass Statement
+// Pass statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct PassStatement {
     pub token: Token,
@@ -719,12 +710,12 @@ impl Node for PassStatement {
 }
 
 impl Display for PassStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "pass")
     }
 }
 
-// Try Statement
+// Try statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct TryStatement {
     pub token: Token,
@@ -749,7 +740,7 @@ impl Node for TryStatement {
 }
 
 impl Display for TryStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "try {{ {} }}", self.body)?;
         for except in &self.except_clauses {
             write!(f, " {}", except)?;
@@ -765,7 +756,7 @@ impl Display for TryStatement {
 }
 
 impl Display for ExceptClause {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "except")?;
         if let Some(ref exc_type) = self.exception_type {
             write!(f, " {}", exc_type)?;

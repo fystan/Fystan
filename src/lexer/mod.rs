@@ -83,18 +83,18 @@ impl<'a> Lexer<'a> {
     }
 
 
+    /// Returns the next token from the input
     pub fn next_token(&mut self) -> Token {
         if !self.tokens.is_empty() {
             return self.tokens.remove(0);
         }
-        
+
         if self.at_line_start {
             self.handle_indentation();
             if !self.tokens.is_empty() {
                 return self.tokens.remove(0);
             }
         }
-
 
         self.skip_whitespace();
 
