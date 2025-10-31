@@ -1084,4 +1084,110 @@ def my_func(x, y):
         }
     }
 
+    #[test]
+    fn test_nested_if_else_in_function() {
+        let input = "
+def test_function():
+    if x < y:
+        if a > b:
+            return a
+        else:
+            return b
+    else:
+        return y
+";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1, "Program should have one statement");
+        let stmt = &program.statements[0];
+
+        let func = if let Statement::Expression(es) = stmt {
+            if let ExpressionEnum::Function(f) = &es.expression {
+                f
+            } else {
+                panic!("Statement is not a function definition");
+            }
+        } else {
+            panic!("Statement is not an expression statement");
+        };
+
+        assert_eq!(func.body.statements.len(), 1, "Function body should have one statement");
+        let if_stmt_outer = if let Statement::If(is) = &func.body.statements[0] {
+            is
+        } else {
+            panic!("Function body statement is not an if statement");
+        };
+
+        let consequence_outer = &if_stmt_outer.consequence;
+        assert_eq!(consequence_outer.statements.len(), 1, "Outer if should have one statement in consequence");
+
+        let if_stmt_inner = if let Statement::If(is) = &consequence_outer.statements[0] {
+            is
+        } else {
+            panic!("Inner statement is not an if statement");
+        };
+
+        assert!(if_stmt_inner.alternative.is_some(), "Inner if should have an else branch");
+    }
+
+    #[test]
+    fn test_class_definition_with_method() {
+        let input = "
+class MyClass:
+    def my_method(self):
+        return 1
+";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Class(class_def) = stmt {
+            assert_eq!(class_def.name.value, "MyClass");
+            assert_eq!(class_def.body.statements.len(), 1);
+            let method = &class_def.body.statements[0];
+            if let Statement::Expression(expr_stmt) = method {
+                if let ExpressionEnum::Function(func) = &expr_stmt.expression {
+                    assert_eq!(func.name.value, "my_method");
+                } else {
+                    panic!("Class body statement is not a function definition");
+                }
+            } else {
+                panic!("Class body statement is not an expression statement");
+            }
+        } else {
+            panic!("Statement is not a ClassDefinition");
+        }
+    }
+
+    #[test]
+    fn test_try_except_finally_statement() {
+        let input = "
+try:
+    x = 1
+except Exception as e:
+    y = 2
+finally:
+    z = 3
+";
+        let l = Lexer::new(input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        check_parser_errors(&p);
+
+        assert_eq!(program.statements.len(), 1);
+        let stmt = &program.statements[0];
+        if let Statement::Try(try_stmt) = stmt {
+            assert_eq!(try_stmt.body.statements.len(), 1);
+            assert_eq!(try_stmt.except_clauses.len(), 1);
+            assert!(try_stmt.finally_block.is_some());
+        } else {
+            panic!("Statement is not a TryStatement");
+        }
+    }
 }

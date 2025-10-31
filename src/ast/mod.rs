@@ -591,7 +591,14 @@ impl Expression for FunctionLiteral {}
 impl Display for FunctionLiteral {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let params: Vec<String> = self.parameters.iter().map(|p| p.to_string()).collect();
-        write!(f, "{}({}) {} {}", self.token_literal(), self.name, params.join(", "), self.body)
+        write!(
+            f,
+            "{} {}({}) {{ {} }}",
+            self.token_literal(),
+            self.name,
+            params.join(", "),
+            self.body
+        )
     }
 }
 
